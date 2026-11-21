@@ -19,6 +19,14 @@
   <button id="updatebtn">Update now</button>
 </div>
 
+<nav class="tabs" id="tabs">
+  <button data-tab="export" class="on">Export</button>
+  <button data-tab="grade">Grade</button>
+  <button data-tab="review">Review</button>
+  <button data-tab="setup">Setup</button>
+</nav>
+
+<div class="tab" id="tab-export">
 <section>
   <label class="cap">Export folder</label>
   <div id="outdir" class="path" title=""></div>
@@ -53,8 +61,72 @@
 
 <footer>
   <button id="go" class="primary" disabled>Export all</button>
+  <button id="sizecheck" class="ghost">Check exported files</button>
   <div id="status" class="muted"></div>
 </footer>
+</div>
+
+<div class="tab" id="tab-grade" hidden>
+  <section>
+    <label class="cap">Adjust</label>
+    <div class="seg" id="gscope">
+      <button data-v="selected" class="on">Selected clips</button>
+      <button data-v="all">All clips in sequence</button>
+    </div>
+    <div id="gtarget" class="muted note"></div>
+  </section>
+  <section>
+    <div id="gparams"></div>
+  </section>
+  <section>
+    <label class="cap">Copy grade</label>
+    <div class="row">
+      <button id="gcopy">Copy from selected clip</button>
+    </div>
+    <div id="gclip" class="muted note">Nothing copied yet.</div>
+    <div class="row">
+      <button id="gpaste" disabled>Paste to selected</button>
+      <button id="gpastecam" disabled>Paste to same camera</button>
+    </div>
+  </section>
+  <footer><div id="gstatus" class="muted"></div></footer>
+</div>
+
+<div class="tab" id="tab-review" hidden>
+  <section>
+    <label class="cap">Review markers</label>
+    <div class="row">
+      <button id="rprev">Previous</button>
+      <button id="rnext">Next</button>
+      <label><input id="rall" type="checkbox"> Show every IN / OUT marker</label>
+    </div>
+  </section>
+  <section class="grow">
+    <div id="rlist"></div>
+  </section>
+  <section>
+    <label class="cap">IN / OUT stills (active sequence)</label>
+    <div class="seg" id="sscope">
+      <button data-v="selected" class="on">Selected clips</button>
+      <button data-v="review">Review clips</button>
+      <button data-v="all">All clips</button>
+    </div>
+    <div class="row opts">
+      <button id="rstills">Save stills</button>
+      <button id="ropen" class="ghost">Open folder</button>
+    </div>
+  </section>
+  <footer><div id="rstatus" class="muted"></div></footer>
+</div>
+
+<div class="tab" id="tab-setup" hidden>
+  <section>
+    <label class="cap">Project panel</label>
+    <div class="row"><button id="scolumns">Apply S-log columns</button></div>
+    <div class="muted note">Shows Label, Name, Frame Rate, Video Duration and Video Info. To sort, click the Video Info column header until the arrow points down.</div>
+  </section>
+  <footer><div id="sstatus" class="muted"></div></footer>
+</div>
 <script src="main.js"></script>
 </body>
 </html>
