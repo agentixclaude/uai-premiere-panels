@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>UGENTIC Export</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>UGENTIC Export</h1>
+    <div id="project" class="muted">No project</div>
+  </div>
+  <div class="hright"><span id="ver" class="muted"></span><button id="refresh" class="ghost" title="Re-read the timeline">Refresh</button></div>
+</header>
+
+<div id="update" class="update" hidden>
+  <span id="updatetext"></span>
+  <button id="updatebtn">Update now</button>
+</div>
+
+<section>
+  <label class="cap">Export folder</label>
+  <div id="outdir" class="path" title=""></div>
+  <div class="row">
+    <button id="browse">Browse…</button>
+    <button id="reveal" class="ghost">Open folder</button>
+    <button id="resetdir" class="ghost">Use Final Output</button>
+  </div>
+</section>
+
+<section>
+  <label class="cap">What to export</label>
+  <div class="seg" id="scope">
+    <button data-v="all" class="on">All sequences</button>
+    <button data-v="active">Active sequence</button>
+    <button data-v="selected">Selected clips</button>
+  </div>
+  <div class="row opts">
+    <label>Max file size <input id="capgb" type="number" min="0.2" step="0.1" value="2"> GB</label>
+    <label>Max <input id="capmbps" type="number" min="5" step="5" value="200"> Mbps</label>
+  </div>
+  <div class="row opts">
+    <label><input id="replace" type="checkbox"> Replace existing files</label>
+    <label><input id="autostart" type="checkbox"> Start queue automatically</label>
+  </div>
+</section>
+
+<section class="grow">
+  <div class="cap"><span id="count">0 clips</span><span id="summary" class="muted"></span></div>
+  <div id="list"></div>
+</section>
+
+<footer>
+  <button id="go" class="primary" disabled>Export all</button>
+  <div id="status" class="muted"></div>
+</footer>
+<script src="main.js"></script>
+</body>
+</html>
