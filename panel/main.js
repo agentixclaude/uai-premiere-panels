@@ -1,4 +1,4 @@
-/* UGENTIC Export — panel logic
+/* UAI Clipcut — panel logic
    One Media Encoder job per enabled V1 clip, cut straight from the sequence (In/Out = that clip).
    File name = clip name. Folder = the client's "Final Output" folder (or the one chosen with Browse). */
 (function () {
@@ -6,8 +6,8 @@
   var fs = nodeReq('fs'), path = nodeReq('path'), os = nodeReq('os'), cp = nodeReq('child_process');
   var EXT_DIR = decodeURI(window.location.pathname).replace(/\/index\.html$/, '');
   var TEMPLATE = path.join(EXT_DIR, 'preset', 'base.epr');
-  var PRESET_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'UGENTIC Export', 'presets');
-  var REPO = 'agentixclaude/ugentic-export';     // updates are published here
+  var PRESET_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'UAI Clipcut', 'presets');
+  var REPO = 'agentixclaude/uai-clipcut';     // updates are published here
   var VERSION_URL = 'https://raw.githubusercontent.com/' + REPO + '/main/panel/version.json';
   var ZIP_URL = 'https://codeload.github.com/' + REPO + '/zip/refs/heads/main';
   var https = nodeReq('https');
@@ -121,7 +121,7 @@
     if (p.h > 2304 || p.w > 4096) x = setParam(x, 'ADBEVideoMPEGProfileLevel', 62);   // H.264 5.2 cannot hold a 3840-tall frame
     x = setParam(x, 'ADBEVideoTargetBitrate', p.mbps + '.');
     x = setParam(x, 'ADBEVideoMaxBitrate', Math.min(300, Math.round(p.mbps * 1.2)) + '.');
-    x = x.replace(/<PresetName>[^<]*<\/PresetName>/, '<PresetName>UGENTIC ' + p.w + 'x' + p.h + ' ' + p.mbps + 'Mbps</PresetName>');
+    x = x.replace(/<PresetName>[^<]*<\/PresetName>/, '<PresetName>UAI Clipcut ' + p.w + 'x' + p.h + ' ' + p.mbps + 'Mbps</PresetName>');
     var file = path.join(PRESET_DIR, p.w + 'x' + p.h + '_' + p.mbps + 'Mbps.epr');
     fs.writeFileSync(file, x, 'utf8');
     return file;
@@ -182,7 +182,7 @@
     return false;
   }
   function download(url, cb, hops) {
-    https.get(url, { headers: { 'User-Agent': 'ugentic-export', 'Cache-Control': 'no-cache' } }, function (res) {
+    https.get(url, { headers: { 'User-Agent': 'uai-clipcut', 'Cache-Control': 'no-cache' } }, function (res) {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && (hops || 0) < 5) { res.resume(); return download(res.headers.location, cb, (hops || 0) + 1); }
       if (res.statusCode !== 200) { res.resume(); return cb(new Error('HTTP ' + res.statusCode)); }
       var chunks = []; res.on('data', function (d) { chunks.push(d); }); res.on('end', function () { cb(null, Buffer.concat(chunks)); });
@@ -205,13 +205,13 @@
     download(ZIP_URL, function (err, buf) {
       if (err) return fail(err.message);
       try {
-        var tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ugentic-export-'));
+        var tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uai-clipcut-'));
         var zip = path.join(tmp, 'update.zip'); fs.writeFileSync(zip, buf);
         cp.execFileSync('/usr/bin/unzip', ['-q', '-o', zip, '-d', tmp]);
         var root = fs.readdirSync(tmp).filter(function (n) { return fs.existsSync(path.join(tmp, n, 'panel', 'CSXS', 'manifest.xml')); })[0];
         if (!root) throw new Error('package is incomplete');
         var src = path.join(tmp, root, 'panel');
-        if (fs.readFileSync(path.join(src, 'CSXS', 'manifest.xml'), 'utf8').indexOf('com.ugentic.export') < 0) throw new Error('wrong package');
+        if (fs.readFileSync(path.join(src, 'CSXS', 'manifest.xml'), 'utf8').indexOf('com.uai.clipcut') < 0) throw new Error('wrong package');
         cp.execFileSync('/bin/cp', ['-R', src + '/.', EXT_DIR]);
         $('update').className = 'update done'; btn.style.display = 'none';
         $('updatetext').textContent = 'Updated to v' + localVersion() + '. Restart Premiere to use it.';

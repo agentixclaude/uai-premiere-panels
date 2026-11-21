@@ -1,4 +1,4 @@
-# UGENTIC Export — Premiere Pro panel (macOS)
+# UAI Clipcut — Premiere Pro panel (macOS)
 
 One-click export of every clip on the timeline to Adobe Media Encoder.
 
@@ -12,10 +12,10 @@ One-click export of every clip on the timeline to Adobe Media Encoder.
 Open **Terminal**, paste this line, press Return:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/agentixclaude/ugentic-export/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentixclaude/uai-clipcut/main/install.sh | bash
 ```
 
-Restart Premiere Pro, then open **Window → Extensions → UGENTIC Export**.
+Restart Premiere Pro, then open **Window → Extensions → UAI Clipcut**.
 
 Needs Premiere Pro 2020 or newer and Adobe Media Encoder, on a Mac.
 
