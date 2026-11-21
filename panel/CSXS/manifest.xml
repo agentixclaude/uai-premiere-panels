@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.uai.clipcut" ExtensionBundleVersion="1.2.0" ExtensionBundleName="UAI Clipcut">
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.uai.smartexport" ExtensionBundleVersion="1.3.0" ExtensionBundleName="UAI Smart Export">
   <ExtensionList>
-    <Extension Id="com.uai.clipcut.panel" Version="1.2.0"/>
+    <Extension Id="com.uai.smartexport.panel" Version="1.3.0"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -15,7 +15,7 @@
     </RequiredRuntimeList>
   </ExecutionEnvironment>
   <DispatchInfoList>
-    <Extension Id="com.uai.clipcut.panel">
+    <Extension Id="com.uai.smartexport.panel">
       <DispatchInfo>
         <Resources>
           <MainPath>./index.html</MainPath>
@@ -31,7 +31,7 @@
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>UAI Clipcut</Menu>
+          <Menu>UAI Smart Export</Menu>
           <Geometry>
             <Size><Height>620</Height><Width>420</Width></Size>
             <MinSize><Height>320</Height><Width>320</Width></MinSize>

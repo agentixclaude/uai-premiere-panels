@@ -1,4 +1,4 @@
-// UAI Clipcut — Premiere host script (ExtendScript, ES3)
+// UAI Smart Export — Premiere host script (ExtendScript, ES3)
 function ugEsc(s) {
     s = String(s);
     return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n\t]/g, ' ');
