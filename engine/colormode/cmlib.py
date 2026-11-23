@@ -13,13 +13,13 @@ def blob(b):
     m=re.search(r'<StartKeyframeValue Encoding="base64"[^>]*>([^<]*)<',b)
     return base64.b64decode(m.group(1).strip()) if m else b''
 def curve(bb):
-    # header: 8 zero, int64 pid, int64 npoints, then per point 8 doubles, trailing byte(s)
+    # header: 8 zero, int64 pid, int64 npoints; per point 7 doubles (x, y, 5 shape) + 1 flag byte; 8 trailing zero bytes
     if len(bb)<24: return None
     pid,n=struct.unpack('<qq',bb[8:24]); pts=[]
     off=24
     for k in range(n):
-        if off+64>len(bb): break
-        pts.append(struct.unpack('<8d',bb[off:off+64])); off+=64
+        if off+57>len(bb): break
+        pts.append(struct.unpack('<7d',bb[off:off+56])); off+=57
     return dict(pid=pid,n=n,pts=pts,tail=bb[off:].hex())
 def swatches(bb):
     sel=struct.unpack('<4f',bb[8:24]); n=struct.unpack('<q',bb[24:32])[0]; out=[]; off=32

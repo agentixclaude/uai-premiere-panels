@@ -30,7 +30,7 @@
 <!-- BUILD -->
 <div class="tab" id="tab-build">
   <section>
-    <div class="cap"><span>Client folder</span><span id="acchip" class="chip" hidden></span></div>
+    <div class="cap"><span>Client folder</span><span id="acchip" class="chip end" hidden></span></div>
     <div id="clientdir" class="path empty">Choose the client's folder (the one holding Raw Data and Project File).</div>
     <div class="row">
       <button id="browse">Choose folder…</button>
@@ -59,6 +59,15 @@
     <div class="list" id="clips"><div class="empty">Choose a client folder to see its clips.</div></div>
   </section>
 
+  <section>
+    <div class="cap"><span>Project panel</span></div>
+    <div class="row spread">
+      <span class="muted">Label, Name, Frame Rate, Video Duration, Video Info</span>
+      <button id="scolumns">Apply S-log columns</button>
+    </div>
+    <div class="note">Build applies them too. To sort, click the Video Info header until the arrow points down.</div>
+  </section>
+
   <footer>
     <div class="row" id="targetrow">
       <span id="target" class="muted"></span>
@@ -70,31 +79,37 @@
   </footer>
 </div>
 
-<!-- GRADE -->
+<!-- GRADE: Color Mode > Color Shift on skin and green screen -->
 <div class="tab" id="tab-grade" hidden>
   <section>
-    <div class="cap"><span>Adjust the Best grade</span></div>
+    <div class="cap"><span>Apply to</span></div>
     <div class="seg" id="gscope">
-      <button data-v="selected" class="on">Selected clips</button>
-      <button data-v="all">All clips in sequence</button>
+      <button data-v="selected" class="on">Selected</button>
+      <button data-v="camera">Same camera</button>
+      <button data-v="all">All in sequence</button>
     </div>
     <div id="gtarget" class="note"></div>
   </section>
-  <section><div id="gparams"></div></section>
   <section>
-    <div class="cap"><span>Copy grade</span></div>
-    <div class="row"><button id="gcopy">Copy from selected clip</button></div>
-    <div id="gclip" class="note">Nothing copied yet.</div>
-    <div class="row" style="margin-top:6px">
-      <button id="gpaste" disabled>Paste to selected</button>
-      <button id="gpastecam" disabled>Paste to same camera</button>
+    <div class="cap"><span class="swatch skin"></span><span>Skin tone</span><span class="end">Color Shift</span></div>
+    <div id="gskin"></div>
+  </section>
+  <section>
+    <div class="cap"><span class="swatch green"></span><span>Green screen</span><span class="end">Color Shift</span></div>
+    <div id="ggreen"></div>
+  </section>
+  <section>
+    <div class="row">
+      <button id="gcopy">Copy from selected clip</button>
+      <button id="greset" class="ghost">Undo changes</button>
     </div>
+    <div id="gclip" class="note">Hue toward pink is +. Changed values turn copper; only those are written.</div>
   </section>
-  <section>
-    <div class="cap"><span>Custom</span></div>
-    <div class="note" style="margin-top:0">Your own skin tweak lives in a Color Mode adjustment with Color Shift (Hue 3–7, Sat 1–3, Lum by light). Add it in the Color tab: scripts cannot create or copy it.</div>
-  </section>
-  <footer><div id="gstatus" class="status"></div></footer>
+  <footer>
+    <button id="gapply" class="primary" disabled>Apply</button>
+    <div class="note" style="margin-top:0">Premiere saves, closes and reopens the project to write Color Shift (about 10 s). Undo history starts fresh.</div>
+    <div id="gstatus" class="status"></div>
+  </footer>
 </div>
 
 <!-- REVIEW -->
@@ -105,21 +120,31 @@
       <button id="rnext">Next flag</button>
       <button id="rsync" class="ghost" title="Put every IN / OUT marker back on its clip's first and last frame">Re-sync markers</button>
     </div>
-    <div class="note" style="margin-top:6px">To move an IN or OUT, use a Rolling Edit on the cut, then press Re-sync markers.</div>
+    <div class="note">To move an IN or OUT, use a Rolling Edit on the cut, then press Re-sync markers.</div>
   </section>
   <section class="grow">
     <div class="list" id="rlist"><div class="empty">Open one of the client sequences.</div></div>
   </section>
   <section>
-    <div class="cap"><span>IN / OUT stills</span><span class="muted">active sequence</span></div>
+    <div class="cap"><span>Images</span><span class="end">PNG · Final Output / Stills</span></div>
     <div class="seg" id="sscope">
       <button data-v="selected" class="on">Selected</button>
       <button data-v="review">Flagged</button>
       <button data-v="all">All clips</button>
     </div>
     <div class="row opts">
-      <button id="rstills">Save stills</button>
+      <button id="rstills">Save image</button>
       <button id="ropen" class="ghost">Open folder</button>
+    </div>
+  </section>
+  <section>
+    <div class="cap"><span>Review ✓</span><span id="rbase" class="end"></span></div>
+    <div class="row"><button id="rcheck">Check my changes</button><button id="rbaseline" class="ghost" hidden>Start tracking from here</button></div>
+    <div id="rchanges" class="changes" hidden></div>
+    <textarea id="rnote" placeholder="What you changed and why, e.g. raised green-screen Lum so CAM1 matches CAM2; Sat +4 to make skin a bit more alive." hidden></textarea>
+    <div class="row" id="rconfirmrow" hidden>
+      <label><input id="rimages" type="checkbox" checked> Save images of changed clips</label>
+      <button id="rconfirm" class="confirm">Confirm review ✓</button>
     </div>
   </section>
   <footer><div id="rstatus" class="status"></div></footer>
@@ -128,36 +153,30 @@
 <!-- ABOUT -->
 <div class="tab" id="tab-about" hidden>
   <section>
-    <div class="cap"><span>Works without Claude</span></div>
-    <ul class="facts">
-      <li>Reads every clip's size, rotation, frame rate and length.</li>
-      <li>Builds the project: one sequence per size and orientation (8K HZ, 8K VER, 4K HZ, 4K VER), head and tail cut and disabled, IN/OUT markers, S-Log Lumetri with the ALEXA LUT, vertical clips rotated.</li>
-      <li>Trims from the audio: about 0.8 s before the first word and 0.6 s after the last. Needs ffmpeg.</li>
-      <li>House grade on every clip, then nudge, copy and paste per camera.</li>
-      <li>Review: jump to flags, re-sync markers after a rolling edit, save IN/OUT stills.</li>
-      <li>S-log Project panel columns.</li>
-    </ul>
+    <div class="cap"><span>Every client</span></div>
+    <ol class="steps">
+      <li><b>Build</b> — choose the client folder, <i>New project for this client</i>, pick Standalone or Claude, press the button.</li>
+      <li><b>Grade</b> — skin and green-screen Color Shift for a clip, a camera or the whole sequence.</li>
+      <li><b>Review</b> — step through flags, fix cuts with a Rolling Edit, then <i>Check my changes → Confirm review ✓</i>.</li>
+      <li><b>Export</b> — UAI Smart Export: 4K, H.264, under 2 GB per clip.</li>
+    </ol>
   </section>
   <section>
-    <div class="cap"><span>Better with Claude</span></div>
-    <ul class="facts">
-      <li>IN and OUT on a frame with the mouth closed and the eyes open.</li>
-      <li>Grade matched per clip: skin brightness and colour, bright highlights pulled down.</li>
-      <li>Flags clips with no usable face frame for you to check.</li>
-    </ul>
+    <div class="cap"><span>Standalone or Claude</span></div>
+    <div class="cols">
+      <div><b>Standalone</b><span>Trim from the audio (0.8 s before the first word, 0.6 s after the last) and the house grade. Seconds, no Claude.</span></div>
+      <div><b>Claude</b><span>IN/OUT on a frame with the mouth closed and the eyes open, grade matched per clip, and your past reviews applied. A few minutes.</span></div>
+    </div>
   </section>
   <section>
-    <div class="cap"><span>By hand</span></div>
+    <div class="cap"><span>Good to know</span></div>
     <ul class="facts">
-      <li>Custom Color Mode adjustment (Color Shift).</li>
-      <li>Sorting the Project panel: click the Video Info header until the arrow points down.</li>
+      <li>Confirmed reviews are remembered (<span class="mono">~/UAI Luma Cut/grade_memory.jsonl</span>) and read by Claude on the next client.</li>
+      <li>Building again replaces the Sequences bin. The XML it imports stays in Project File.</li>
+      <li>Sorting the Project panel is one click by hand: Video Info header, arrow down.</li>
     </ul>
+    <div class="row opts"><span id="ffmpegstate" class="chip"></span><span id="enginestate" class="chip"></span></div>
   </section>
-  <section>
-    <div class="cap"><span>Project panel</span></div>
-    <div class="row"><button id="scolumns">Apply S-log columns</button><span id="ffmpegstate" class="chip"></span></div>
-  </section>
-  <footer><div id="astatus" class="status"></div></footer>
 </div>
 
 <script src="main.js"></script>

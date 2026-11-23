@@ -193,13 +193,14 @@ function ugMarkers() {
 function ugGoto(ticks) {
     try { app.project.activeSequence.setPlayerPosition(String(ticks)); return 'OK'; } catch (e) { return 'ERR:' + e.toString(); }
 }
-// outPath has no extension: Premiere adds .jpg itself
+// outPath has no extension: Premiere adds it. PNG, or JPEG when PNG is unavailable.
 function ugStill(ticks, outPath) {
     try {
         var s = app.project.activeSequence;
         s.setPlayerPosition(String(ticks));
         app.enableQE();
         var q = qe.project.getActiveSequence();
+        if (typeof q.exportFramePNG === 'function') { q.exportFramePNG(q.CTI.timecode, outPath); return 'OK'; }
         q.exportFrameJPEG(q.CTI.timecode, outPath);
         return 'OK';
     } catch (e) { return 'ERR:' + e.toString(); }

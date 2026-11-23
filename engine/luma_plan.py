@@ -7,6 +7,7 @@ Resumable: each clip's result is cached, so run it again until it prints "plan w
 Usage (inside Claude's workspace on the Mac, where connected folders sit under ~/mnt/):
   python3 luma_plan.py --setup                      # once per session: installs mediapipe if missing
   python3 luma_plan.py "<path to luma_request.json>" [--budget 150]
+  python3 luma_plan.py --memory "<path to grade_memory.jsonl>"   # what reviewers changed after past builds
 """
 import os, sys, json, time, glob, subprocess, tempfile
 
@@ -98,8 +99,26 @@ def main(request_path, budget):
     print(json.dumps(dict(status='plan written', path=out, clips=len(clips), flagged=sum(1 for x in clips if x['flag']))))
 
 
+def memory_summary(path):
+    """Average correction per area/field and camera from confirmed reviews, plus the reviewers' notes."""
+    rows = [json.loads(l) for l in open(path) if l.strip()]
+    agg = {}
+    for r in rows:
+        for c in r.get('changes', []):
+            for it in c.get('items', []):
+                k = (it['area'], it['field'], c.get('camera', ''))
+                agg.setdefault(k, []).append(it['to'] - it['from'])
+    print(f'{len(rows)} confirmed reviews')
+    for (area, field, cam), d in sorted(agg.items(), key=lambda x: -len(x[1])):
+        print(f'  {area:12} {field:12} {cam:6} n={len(d):2}  mean {sum(d)/len(d):+.2f}  range {min(d):+.2f}..{max(d):+.2f}')
+    for r in rows[-10:]:
+        if r.get('note'): print(f"  note ({r.get('client')}, {r.get('date','')[:10]}): {r['note']}")
+
+
 if __name__ == '__main__':
     args = sys.argv[1:]
+    if '--memory' in args:
+        i = args.index('--memory'); memory_summary(args[i + 1]); del args[i:i + 2]
     if '--setup' in args: setup(); args = [a for a in args if a != '--setup']
     if args:
         b = 150.0

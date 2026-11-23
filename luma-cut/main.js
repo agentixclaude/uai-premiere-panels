@@ -10,6 +10,11 @@
   var XB = nodeReq(path.join(EXT_DIR, 'lib', 'xmlbuild.js'));
   var MP4 = nodeReq(path.join(EXT_DIR, 'lib', 'mp4probe.js'));
   var SPEECH = nodeReq(path.join(EXT_DIR, 'lib', 'speech.js'));
+  var CM = nodeReq(path.join(EXT_DIR, 'lib', 'colormode.js'));
+  var CM_TEMPLATE = path.join(EXT_DIR, 'lib', 'colormode_template.json');
+  var HOME_DIR = path.join(os.homedir(), 'UAI Luma Cut');
+  var MEMORY_FILE = path.join(HOME_DIR, 'grade_memory.jsonl');
+  var BACKUP_DIR = path.join(HOME_DIR, 'backups');
   var REPO = 'agentixclaude/uai-smart-export';
   var VERSION_URL = 'https://raw.githubusercontent.com/' + REPO + '/main/luma-cut/version.json';
   var ZIP_URL = 'https://codeload.github.com/' + REPO + '/zip/refs/heads/main';
@@ -188,13 +193,13 @@
   function promptText() {
     var c = state.client;
     return 'Luma Cut: make the trim and grade plan for ' + c.name + '.\nRequest file: ' + c.requestFile +
-      '\nEngine: ' + ENGINE_DIR + '\nWrite luma_plan.json next to the request file.';
+      '\nEngine: ' + ENGINE_DIR + '\nPast review corrections: ' + MEMORY_FILE + '\nWrite luma_plan.json next to the request file.';
   }
   function writeRequest() {
     var c = state.client;
     var req = {
       version: 1, requestId: crypto.randomBytes(6).toString('hex'), createdAt: new Date().toISOString(),
-      client: c.name, ac: c.ac, clientDir: c.dir, projRel: c.projRel, rawRel: c.rawRel, engine: ENGINE_DIR,
+      client: c.name, ac: c.ac, clientDir: c.dir, projRel: c.projRel, rawRel: c.rawRel, engine: ENGINE_DIR, memory: MEMORY_FILE,
       rules: { preRoll: SPEECH.PRE, postRoll: SPEECH.POST, house: XB.HOUSE },
       clips: state.clips.map(function (x) { return { file: x.file, rel: x.rel, path: x.path, w: x.w, h: x.h, raw_w: x.raw_w, raw_h: x.raw_h, rot: x.rot, fps: x.fps, frames: x.frames }; })
     };
@@ -295,6 +300,7 @@
       var cols = fs.readFileSync(path.join(EXT_DIR, 'columns', 's-log.xml'), 'utf8');
       await evalJsx('lcColumns(' + q(cols) + ')');
       await evalJsx('lcSave()');
+      try { await writeBaseline('build'); } catch (e2) {}
       $('progress').firstChild.style.width = '100%';
       var flagged = res.review.length;
       setStatus('status', 'Built ' + res.sequences.map(function (s) { return s.name; }).join(', ') + ' · ' + plan.clips.length + ' clips' +
@@ -351,6 +357,9 @@
     renderMode(); renderClips(); renderTarget();
     $('ffmpegstate').textContent = state.ffmpeg ? 'ffmpeg found' : 'ffmpeg missing';
     $('ffmpegstate').className = 'chip' + (state.ffmpeg ? ' ok' : ' warn');
+    var eng = fs.existsSync(path.join(ENGINE_DIR, 'luma_plan.py'));
+    $('enginestate').textContent = eng ? 'Claude engine installed' : 'Claude engine missing (run install.sh)';
+    $('enginestate').className = 'chip' + (eng ? ' ok' : ' warn');
   }
   $('refresh').addEventListener('click', function () { if (state.client) { scanClips(); } refresh(); refreshTab(); });
 
@@ -362,64 +371,125 @@
     ['build', 'grade', 'review', 'about'].forEach(function (t) { $('tab-' + t).hidden = t !== name; });
     refreshTab();
   }
-  function refreshTab() { if (activeTab === 'grade') gradeRefresh(); if (activeTab === 'review') reviewRefresh(); }
+  function refreshTab() { if (activeTab === 'grade') gradeRefresh(); if (activeTab === 'review') { reviewRefresh(); showBaseInfo(); } }
   Array.prototype.forEach.call($('tabs').children, function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); }); });
 
-  // ---------------- grade ----------------
-  var G_PARAMS = [['exposure', 'Exposure', 0.1], ['temperature', 'Temperature', 2], ['tint', 'Tint', 1], ['saturation', 'Saturation', 2], ['contrast', 'Contrast', 2],
-                  ['highlights', 'Highlights', 5], ['shadows', 'Shadows', 5], ['whites', 'Whites', 5], ['blacks', 'Blacks', 5]];
-  var G_ORDER = ['temperature', 'tint', 'saturation', 'exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks'];
-  var grade = { scope: 'selected', copied: null };
+  // ---------------- grade: Color Mode > Color Shift on skin and green screen ----------------
+  var G_FIELDS = [['hue', 'Hue Shift'], ['sat', 'Sat Shift'], ['lum', 'Lum Shift']], G_STEP = 0.5;
+  var grade = { scope: 'selected', info: null, values: {}, shown: null, edits: { skin: {}, green: {} }, busy: false };
   function plural(n) { return n + (n === 1 ? ' clip' : ' clips'); }
-  function gradeShow(d) {
-    if (d.error) { $('gtarget').textContent = d.error; return; }
-    $('gtarget').textContent = d.count === 0 ? (grade.scope === 'selected' ? 'Select clips in the timeline, then press Refresh.' : 'No enabled clips on V1 of the active sequence.')
-      : d.graded === 0 ? 'No Lumetri Color on ' + (d.count === 1 ? 'this clip.' : 'these clips.')
-      : plural(d.graded) + (d.graded > 1 ? ' — values shown for ' + d.name : ' — ' + d.name);
-    G_PARAMS.forEach(function (p) { var v = d.values ? d.values[p[0]] : null; $('gv-' + p[0]).textContent = (v === null || v === undefined) ? '–' : v; });
-    Array.prototype.forEach.call($('gparams').querySelectorAll('button'), function (b) { b.disabled = !(d.graded > 0); });
+  function r2(v) { return Math.round(Number(v) * 100) / 100; }
+  function gValue(part, k) {
+    var e = grade.edits[part][k];
+    if (e !== undefined) return e;
+    return grade.shown ? grade.shown[part][k] : 0;
   }
-  async function gradeRefresh() { gradeShow(await jsx('lcGradeRead(' + q(grade.scope) + ')')); }
-  G_PARAMS.forEach(function (p) {
-    var row = document.createElement('div'); row.className = 'prow';
-    row.innerHTML = '<span></span><span class="v" id="gv-' + p[0] + '">–</span><button disabled></button><button disabled></button>';
-    row.children[0].textContent = p[1];
-    [-1, 1].forEach(function (sign, i) {
-      var b = row.children[2 + i];
-      b.textContent = sign > 0 ? '+' : '−'; b.title = (sign > 0 ? 'Raise ' : 'Lower ') + p[1].toLowerCase() + ' by ' + p[2];
-      b.addEventListener('click', async function () {
-        var d = await jsx('lcGradeNudge(' + q(grade.scope) + ',' + q(p[0]) + ',' + (sign * p[2]) + ')');
-        gradeShow(d);
-        if (!d.error) setStatus('gstatus', p[1] + ' ' + (sign > 0 ? '+' : '−') + p[2] + ' on ' + plural(d.graded) + '.');
+  function gDirty() { return Object.keys(grade.edits.skin).length + Object.keys(grade.edits.green).length; }
+  function gRender() {
+    ['skin', 'green'].forEach(function (part) {
+      G_FIELDS.forEach(function (f) {
+        var inp = $('gv-' + part + '-' + f[0]), v = gValue(part, f[0]);
+        if (document.activeElement !== inp) inp.value = (v > 0 ? '+' : '') + r2(v).toFixed(2);
+        inp.className = 'v' + (grade.edits[part][f[0]] !== undefined ? ' changed' : '');
       });
     });
-    $('gparams').appendChild(row);
+    var n = grade.info && grade.info.names ? grade.info.names.length : 0, d = gDirty();
+    $('gapply').disabled = !n || !d || grade.busy;
+    $('gapply').textContent = d ? 'Apply ' + d + (d === 1 ? ' change' : ' changes') + ' to ' + plural(n) : 'Apply';
+    $('greset').disabled = !d;
+  }
+  ['skin', 'green'].forEach(function (part) {
+    G_FIELDS.forEach(function (f) {
+      var row = document.createElement('div'); row.className = 'prow';
+      row.innerHTML = '<span></span><input type="text" inputmode="decimal"><button></button><button></button>';
+      row.children[0].textContent = f[1];
+      var inp = row.children[1]; inp.id = 'gv-' + part + '-' + f[0];
+      var set = function (v) { if (!isFinite(v)) return; v = Math.max(-100, Math.min(100, r2(v))); grade.edits[part][f[0]] = v; gRender(); };
+      inp.addEventListener('change', function () { set(parseFloat(inp.value)); });
+      inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') inp.blur(); });
+      [-1, 1].forEach(function (sign, k) {
+        var b = row.children[2 + k]; b.textContent = sign > 0 ? '+' : '−';
+        b.title = (sign > 0 ? '+' : '−') + G_STEP;
+        b.addEventListener('click', function () { set(gValue(part, f[0]) + sign * G_STEP); });
+      });
+      $(part === 'skin' ? 'gskin' : 'ggreen').appendChild(row);
+    });
   });
+  function readColorShift(projectPath) {
+    var ctx = CM.load(projectPath);
+    return CM.readAll(ctx);
+  }
+  async function gradeRefresh() {
+    if (grade.busy) return;
+    var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
+    grade.info = info.error ? null : info;
+    if (info.error) { $('gtarget').textContent = info.error; gRender(); return; }
+    try { await evalJsx('lcSave()'); grade.values = readColorShift(info.projectPath); } catch (e) { grade.values = {}; }
+    var names = info.names || [];
+    grade.shown = names.length && grade.values[names[0]] ? grade.values[names[0]] : { skin: { hue: 0, sat: 0, lum: 0 }, green: { hue: 0, sat: 0, lum: 0 } };
+    var t = !names.length ? (grade.scope === 'selected' ? 'Select clips in the timeline, then press Refresh.' : grade.scope === 'camera' ? 'Select one clip of the camera, then press Refresh.' : 'No enabled clips on V1.')
+      : plural(names.length) + (grade.scope === 'camera' && info.cameras.length ? ' from ' + info.cameras.join(', ') : '') + ' — ' + (names.length > 1 ? 'showing ' + names[0] : names[0]);
+    var without = names.filter(function (n) { return grade.values[n] && !grade.values[n].hasColorMode; }).length;
+    if (without) t += ' · ' + without + ' without Color Mode yet (added on Apply)';
+    $('gtarget').textContent = t;
+    gRender();
+  }
   Array.prototype.forEach.call($('gscope').children, function (b) {
     b.addEventListener('click', function () {
       Array.prototype.forEach.call($('gscope').children, function (x) { x.className = x === b ? 'on' : ''; });
       grade.scope = b.getAttribute('data-v'); gradeRefresh();
     });
   });
+  $('greset').addEventListener('click', function () { grade.edits = { skin: {}, green: {} }; gRender(); setStatus('gstatus', ''); });
   $('gcopy').addEventListener('click', async function () {
-    var d = await jsx('lcGradeRead("selected")');
-    if (d.error || !d.graded) { setStatus('gstatus', d.error || 'Select one graded clip in the timeline first.', 'warn'); return; }
-    grade.copied = { name: d.name, camera: d.camera, values: d.values };
-    $('gclip').textContent = 'Copied from ' + d.name + ' (camera ' + d.camera + ').';
-    $('gpaste').disabled = false; $('gpastecam').disabled = false;
-    $('gpastecam').textContent = 'Paste to all ' + d.camera + ' clips';
-    setStatus('gstatus', '');
+    var info = await jsx('lcTargetNames("selected")');
+    if (info.error || !info.names.length) { setStatus('gstatus', info.error || 'Select one clip in the timeline first.', 'warn'); return; }
+    try { await evalJsx('lcSave()'); grade.values = readColorShift(info.projectPath); } catch (e) { setStatus('gstatus', 'Could not read the project: ' + e.message, 'bad'); return; }
+    var v = grade.values[info.names[0]]; if (!v) { setStatus('gstatus', info.names[0] + ' has no S-Log grade.', 'warn'); return; }
+    grade.edits = { skin: JSON.parse(JSON.stringify(v.skin)), green: JSON.parse(JSON.stringify(v.green)) };
+    $('gclip').textContent = 'Copied from ' + info.names[0] + '. Pick where it goes, then Apply.';
+    gRender();
   });
-  async function gradePaste(scope) {
-    if (!grade.copied) return;
-    var csv = G_ORDER.map(function (k) { var v = grade.copied.values[k]; return (v === null || v === undefined) ? 'x' : v; }).join(',');
-    var r = await evalJsx('lcGradeApply(' + q(scope) + ',' + q(grade.copied.camera) + ',' + q(csv) + ')');
-    if (/^OK:/.test(r)) setStatus('gstatus', 'Pasted to ' + plural(parseInt(r.slice(3), 10)) + '.', 'ok');
-    else setStatus('gstatus', 'Paste failed: ' + String(r).replace(/^ERR:/, ''), 'bad');
-    gradeRefresh();
+  function backupProject(file) {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    var stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    var dest = path.join(BACKUP_DIR, path.basename(file, '.prproj') + '_' + stamp + '.prproj');
+    fs.copyFileSync(file, dest);
+    var all = fs.readdirSync(BACKUP_DIR).filter(function (n) { return n.indexOf(path.basename(file, '.prproj') + '_') === 0; }).sort();
+    while (all.length > 10) { try { fs.unlinkSync(path.join(BACKUP_DIR, all.shift())); } catch (e) {} }
+    return dest;
   }
-  $('gpaste').addEventListener('click', function () { gradePaste('selected'); });
-  $('gpastecam').addEventListener('click', function () { gradePaste('camera'); });
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  $('gapply').addEventListener('click', async function () {
+    if (grade.busy || !gDirty()) return;
+    var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
+    if (info.error || !info.names.length) { setStatus('gstatus', info.error || 'No clips to apply to.', 'warn'); return; }
+    var tpl; try { tpl = JSON.parse(fs.readFileSync(CM_TEMPLATE, 'utf8')); } catch (e) { setStatus('gstatus', 'Color Mode template is missing. Reinstall the panel.', 'bad'); return; }
+    var edits = {};
+    info.names.forEach(function (n) { edits[n] = { skin: grade.edits.skin, green: grade.edits.green }; });
+    grade.busy = true; gRender(); $('gapply').className = 'primary busy'; state.busy = true;
+    var file = info.projectPath, report = null, err = null;
+    try {
+      setStatus('gstatus', 'Saving and closing the project…');
+      var c = await evalJsx('lcCloseForEdit()');
+      if (c !== 'OK') throw new Error(String(c).replace(/^ERR:/, ''));
+      await wait(600);
+      backupProject(file);
+      setStatus('gstatus', 'Writing Color Shift…');
+      report = CM.applyAndSave(file, edits, tpl);
+    } catch (e) { err = e; }
+    setStatus('gstatus', 'Reopening…');
+    var o = await evalJsx('lcReopen(' + q(file) + ',' + q(info.sequenceId) + ',' + q(info.position) + ')');
+    grade.busy = false; state.busy = false; $('gapply').className = 'primary';
+    if (err) setStatus('gstatus', 'Not applied: ' + err.message + (o === 'OK' ? '' : ' Reopen the project from File > Open Recent.'), 'bad');
+    else if (o !== 'OK') setStatus('gstatus', 'Written, but Premiere did not reopen the project. Open it from File > Open Recent.', 'warn');
+    else {
+      var changed = report.filter(function (l) { return !/skipped/.test(l); }).length;
+      setStatus('gstatus', 'Applied to ' + plural(info.names.length) + '. Check the look; Review ✓ records it.', changed ? 'ok' : 'warn');
+      grade.edits = { skin: {}, green: {} };
+    }
+    await refresh(); gradeRefresh();
+  });
 
   // ---------------- review ----------------
   var review = { data: null, sscope: 'selected' };
@@ -476,40 +546,155 @@
       review.sscope = b.getAttribute('data-v');
     });
   });
-  function stillsDir() {
-    if (state.client) return path.join(state.client.dir, 'QC Stills');
-    return state.info && state.info.open ? path.join(path.dirname(path.dirname(state.info.projectPath)), 'QC Stills') : '';
+  // Images go to the client's Final Output / Stills (PNG)
+  function finalOutputDir() {
+    if (state.client) return path.join(state.client.dir, state.client.outRel);
+    if (!state.info || !state.info.open) return '';
+    var clientDir = path.dirname(path.dirname(state.info.projectPath));
+    return path.join(clientDir, subdir(clientDir, /^final[ _-]?outputs?$/i) || 'Final Output');
+  }
+  function stillsDir() { var f = finalOutputDir(); return f ? path.join(f, 'Stills') : ''; }
+  function stemOf(name) { return String(name).replace(/\.[A-Za-z0-9]{2,4}$/, '').replace(/[\/:*?"<>|]/g, '_'); }
+  async function saveImages(clips, frame, suffix) {
+    var dir = stillsDir(); fs.mkdirSync(dir, { recursive: true });
+    var failed = 0, n = 0;
+    for (var i = 0; i < clips.length; i++) {
+      var c = clips[i], stem = stemOf(c.name) + (suffix || '');
+      setStatus('rstatus', 'Saving ' + (i + 1) + ' of ' + clips.length + ' — ' + stemOf(c.name));
+      var a = await evalJsx('lcStill(' + q(c.startTicks) + ',' + q(path.join(dir, stem + '_IN')) + ')');
+      var b = await evalJsx('lcStill(' + q(String(Number(c.endTicks) - frame)) + ',' + q(path.join(dir, stem + '_OUT')) + ')');
+      if (!/^OK/.test(a) || !/^OK/.test(b)) failed++; else n += 2;
+    }
+    return { dir: dir, saved: n, failed: failed };
   }
   $('rstills').addEventListener('click', async function () {
     if (state.busy) return;
     await reviewRefresh();
     var d = review.data; if (!d) return;
-    var frame = Number(d.timebase), flagged = {};
+    var flagged = {};
     d.markers.filter(isFlag).forEach(function (mk) { flagged[mk.name.replace(/^(IN|OUT) /, '')] = true; });
-    var clips = d.clips.filter(function (c) { return review.sscope === 'all' || (review.sscope === 'selected' ? c.selected : flagged[c.name]); });
+    var seen = {}, clips = d.clips.filter(function (c) { if (seen[c.name]) return false; seen[c.name] = true; return review.sscope === 'all' || (review.sscope === 'selected' ? c.selected : flagged[c.name]); });
     if (!clips.length) { setStatus('rstatus', review.sscope === 'selected' ? 'Select clips in the timeline first.' : 'No matching clips.', 'warn'); return; }
     state.busy = true; $('rstills').disabled = true;
     try {
-      var dir = stillsDir(); fs.mkdirSync(dir, { recursive: true }); var failed = 0;
-      for (var i = 0; i < clips.length; i++) {
-        var c = clips[i], stem = c.name.replace(/\.[A-Za-z0-9]{2,4}$/, '').replace(/[\/:*?"<>|]/g, '_');
-        setStatus('rstatus', 'Saving ' + (i + 1) + ' of ' + clips.length + ' — ' + stem);
-        var a = await evalJsx('lcStill(' + q(c.startTicks) + ',' + q(path.join(dir, stem + '_IN')) + ')');
-        var b = await evalJsx('lcStill(' + q(String(Number(c.endTicks) - frame)) + ',' + q(path.join(dir, stem + '_OUT')) + ')');
-        if (a !== 'OK' || b !== 'OK') failed++;
-      }
-      setStatus('rstatus', (clips.length - failed) * 2 + ' stills saved to ' + dir + (failed ? ' (' + failed + ' clips failed)' : '') + '.', failed ? 'warn' : 'ok');
+      var r = await saveImages(clips, Number(d.timebase), '');
+      setStatus('rstatus', r.saved + ' images saved to Final Output / Stills' + (r.failed ? ' (' + r.failed + ' clips failed)' : '') + '.', r.failed ? 'warn' : 'ok');
     } catch (e) { setStatus('rstatus', 'Stopped: ' + e.message, 'bad'); }
     state.busy = false; $('rstills').disabled = false;
   });
   $('ropen').addEventListener('click', function () { var dir = stillsDir(); if (dir) cp.execFile('/usr/bin/open', [fs.existsSync(dir) ? dir : path.dirname(dir)]); });
 
-  // ---------------- about / setup ----------------
+  // ---------------- Review ✓: what changed after the build / last review, remembered for next time ----------------
+  var LUM_NAMES = { temperature: 'Temperature', tint: 'Tint', saturation: 'Saturation', exposure: 'Exposure', contrast: 'Contrast', highlights: 'Highlights', shadows: 'Shadows', whites: 'Whites', blacks: 'Blacks' };
+  var rv = { changes: null, current: null };
+  function baselineFile() { return state.info && state.info.open ? path.join(path.dirname(state.info.projectPath), 'luma_baseline.json') : ''; }
+  function reviewLogFile() { return state.info && state.info.open ? path.join(path.dirname(state.info.projectPath), 'luma_review_log.json') : ''; }
+  async function snapshot() {
+    await evalJsx('lcSave()');
+    var lum = await jsx('lcAllGrades()');
+    if (lum.error) throw new Error(lum.error);
+    var cm = {}; try { cm = CM.readAll(CM.load(state.info.projectPath)); } catch (e) {}
+    var clips = {};
+    Object.keys(lum).forEach(function (n) { clips[n] = { lumetri: lum[n], skin: cm[n] ? cm[n].skin : { hue: 0, sat: 0, lum: 0 }, green: cm[n] ? cm[n].green : { hue: 0, sat: 0, lum: 0 } }; });
+    return clips;
+  }
+  async function writeBaseline(by) {
+    var info = await jsx('lcInfo()'); if (!info.open) return;
+    state.info = info;
+    var clips = await snapshot();
+    fs.writeFileSync(baselineFile(), JSON.stringify({ updatedAt: new Date().toISOString(), by: by, clips: clips }, null, 1));
+  }
+  function diff(base, cur) {
+    var out = [];
+    Object.keys(cur).forEach(function (n) {
+      var b = base[n], c = cur[n], items = [];
+      if (!b) return;
+      Object.keys(LUM_NAMES).forEach(function (k) {
+        var x = b.lumetri ? b.lumetri[k] : null, y = c.lumetri[k];
+        if (x !== null && x !== undefined && y !== null && y !== undefined && Math.abs(y - x) >= 0.05) items.push({ area: 'Best grade', field: LUM_NAMES[k], from: x, to: y });
+      });
+      ['skin', 'green'].forEach(function (part) {
+        ['hue', 'sat', 'lum'].forEach(function (k) {
+          var x = (b[part] || {})[k] || 0, y = (c[part] || {})[k] || 0;
+          if (Math.abs(y - x) >= 0.05) items.push({ area: part === 'skin' ? 'Skin' : 'Green screen', field: k.charAt(0).toUpperCase() + k.slice(1) + ' Shift', from: x, to: y });
+        });
+      });
+      if (items.length) out.push({ clip: n, camera: n.replace(/\.[^.]+$/, '').match(/^([A-Za-z]+\d*)/) ? n.replace(/\.[^.]+$/, '').match(/^([A-Za-z]+\d*)/)[1].toUpperCase() : '', items: items });
+    });
+    return out;
+  }
+  function sign(v) { v = Math.round(v * 100) / 100; return (v > 0 ? '+' : '') + v; }
+  function showBaseInfo() {
+    var f = baselineFile(), b = f ? readJson(f) : null;
+    $('rbase').textContent = b ? 'since ' + (b.by === 'review' ? 'last review' : 'build') + ' · ' + new Date(b.updatedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'not tracking yet';
+    $('rbaseline').hidden = !!b || !(state.info && state.info.open);
+  }
+  $('rbaseline').addEventListener('click', async function () {
+    try { await writeBaseline('review'); setStatus('rstatus', 'Tracking changes from now on.', 'ok'); } catch (e) { setStatus('rstatus', 'Could not start tracking: ' + e.message, 'bad'); }
+    showBaseInfo();
+  });
+  $('rcheck').addEventListener('click', async function () {
+    if (state.busy) return;
+    var info = await jsx('lcInfo()'); if (!info.open) { setStatus('rstatus', 'Open the client project first.', 'warn'); return; }
+    state.info = info; showBaseInfo();
+    var base = readJson(baselineFile());
+    if (!base) { setStatus('rstatus', 'Nothing to compare yet. Press Start tracking from here, then make your changes.', 'warn'); return; }
+    setStatus('rstatus', 'Reading the grade…');
+    try { rv.current = await snapshot(); } catch (e) { setStatus('rstatus', 'Could not read the grade: ' + e.message, 'bad'); return; }
+    rv.changes = diff(base.clips, rv.current);
+    var box = $('rchanges'); box.innerHTML = '';
+    if (!rv.changes.length) {
+      box.hidden = true; $('rnote').hidden = true; $('rconfirmrow').hidden = true;
+      setStatus('rstatus', 'No changes since the ' + (base.by === 'review' ? 'last review' : 'build') + '.', 'ok'); return;
+    }
+    rv.changes.forEach(function (c) {
+      var row = document.createElement('div'); row.className = 'c';
+      row.innerHTML = '<span class="n"></span><span class="muted"></span><span class="d"></span>';
+      row.children[0].textContent = c.clip; row.children[1].textContent = c.items.length + (c.items.length === 1 ? ' change' : ' changes');
+      row.children[2].innerHTML = c.items.map(function (it) { return it.area + ' ' + it.field + ' <b>' + sign(it.to - it.from) + '</b> (' + sign(it.from) + ' → ' + sign(it.to) + ')'; }).join(' · ');
+      box.appendChild(row);
+    });
+    box.hidden = false; $('rnote').hidden = false; $('rconfirmrow').hidden = false;
+    var total = rv.changes.reduce(function (a, c) { return a + c.items.length; }, 0);
+    setStatus('rstatus', total + ' changes on ' + plural(rv.changes.length) + '. Add a note, then confirm.');
+  });
+  $('rconfirm').addEventListener('click', async function () {
+    if (!rv.changes || !rv.changes.length || state.busy) return;
+    var entry = {
+      date: new Date().toISOString(), client: state.client ? state.client.name : path.basename(state.info.projectPath, '.prproj').replace(/_GRADED$/, ''),
+      ac: state.client ? state.client.ac : /(^|[^A-Za-z])AC\s*#?\s*\d+/i.test(state.info.projectPath), project: state.info.projectPath,
+      reviewer: os.userInfo().username, note: $('rnote').value.trim(), changes: rv.changes
+    };
+    try {
+      var log = readJson(reviewLogFile()) || []; log.push(entry);
+      fs.writeFileSync(reviewLogFile(), JSON.stringify(log, null, 1));
+      fs.mkdirSync(HOME_DIR, { recursive: true });
+      fs.appendFileSync(MEMORY_FILE, JSON.stringify(entry) + '\n');
+      fs.writeFileSync(baselineFile(), JSON.stringify({ updatedAt: entry.date, by: 'review', clips: rv.current }, null, 1));
+    } catch (e) { setStatus('rstatus', 'Could not save the review: ' + e.message, 'bad'); return; }
+    var msg = 'Review saved: ' + plural(rv.changes.length) + ', remembered for the next client.';
+    if ($('rimages').checked) {
+      await reviewRefresh();
+      var d = review.data, changed = {};
+      rv.changes.forEach(function (c) { changed[c.clip] = true; });
+      var seen = {}, clips = d ? d.clips.filter(function (c) { if (seen[c.name] || !changed[c.name]) return false; seen[c.name] = true; return true; }) : [];
+      if (clips.length) {
+        state.busy = true;
+        try { var r = await saveImages(clips, Number(d.timebase), '_review'); msg += ' ' + r.saved + ' images in Final Output / Stills.'; } catch (e) {}
+        state.busy = false;
+      }
+      if (d && clips.length < rv.changes.length) msg += ' Images only for ' + d.sequence + '.';
+    }
+    rv.changes = null; $('rchanges').hidden = true; $('rnote').hidden = true; $('rnote').value = ''; $('rconfirmrow').hidden = true;
+    setStatus('rstatus', msg, 'ok'); showBaseInfo();
+  });
+
+  // ---------------- project panel (Build tab) ----------------
   $('scolumns').addEventListener('click', async function () {
-    var xml; try { xml = fs.readFileSync(path.join(EXT_DIR, 'columns', 's-log.xml'), 'utf8'); } catch (e) { setStatus('astatus', 'Column file is missing. Reinstall the panel.', 'bad'); return; }
+    var xml; try { xml = fs.readFileSync(path.join(EXT_DIR, 'columns', 's-log.xml'), 'utf8'); } catch (e) { setStatus('status', 'Column file is missing. Reinstall the panel.', 'bad'); return; }
     var r = await evalJsx('lcColumns(' + q(xml) + ')');
-    if (r === 'OK') setStatus('astatus', 'S-log columns applied. To sort, click the Video Info header until the arrow points down.', 'ok');
-    else setStatus('astatus', 'Could not apply: ' + String(r).replace(/^ERR:/, ''), 'bad');
+    if (r === 'OK') setStatus('status', 'S-log columns applied. To sort, click the Video Info header until the arrow points down.', 'ok');
+    else setStatus('status', 'Could not apply: ' + String(r).replace(/^ERR:/, ''), 'bad');
   });
 
   // ---------------- self-update (GitHub) ----------------

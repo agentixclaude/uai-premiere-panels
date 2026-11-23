@@ -137,40 +137,68 @@ function lcValuesJson(clip) {
     }
     return out + '}';
 }
-function lcGradeRead(scope) {
+// Lumetri (Best grade) values of every graded body clip in every sequence: { "<clip>": {...} }
+function lcAllGrades() {
     try {
-        var t = lcTargets(scope, ''), graded = 0, first = null, firstName = '';
-        for (var i = 0; i < t.length; i++) {
-            var v = lcValuesJson(t[i]);
-            if (v) { graded++; if (!first) { first = v; firstName = t[i].name; } }
-        }
-        return '{"count":' + t.length + ',"graded":' + graded + ',"name":"' + lcEsc(firstName) + '","camera":"' + lcEsc(firstName ? lcCamera(firstName) : '') + '","values":' + (first || 'null') + '}';
-    } catch (e) { return lcErr(e); }
-}
-function lcGradeNudge(scope, key, delta) {
-    try {
-        var t = lcTargets(scope, '');
-        for (var i = 0; i < t.length; i++) {
-            var l = lcLumetri(t[i]); if (!l) { continue; }
-            var p = lcBasic(l)[key]; if (!p) { continue; }
-            p.setValue(lcRound(p.getValue() + delta), true);
-        }
-        return lcGradeRead(scope);
-    } catch (e) { return lcErr(e); }
-}
-function lcGradeApply(scope, cam, csv) {
-    try {
-        var vals = String(csv).split(','), t = lcTargets(scope, cam), n = 0;
-        for (var i = 0; i < t.length; i++) {
-            var l = lcLumetri(t[i]); if (!l) { continue; }
-            var b = lcBasic(l);
-            for (var k = 0; k < LC_KEYS.length; k++) {
-                if (vals[k] === 'x' || vals[k] === undefined || !b[LC_KEYS[k]]) { continue; }
-                b[LC_KEYS[k]].setValue(parseFloat(vals[k]), true);
+        var p = app.project, out = '{', first = true, seen = {};
+        for (var i = 0; i < p.sequences.numSequences; i++) {
+            var s = p.sequences[i];
+            if (s.videoTracks.numTracks < 1) { continue; }
+            var t = s.videoTracks[0];
+            for (var c = 0; c < t.clips.numItems; c++) {
+                var k = t.clips[c];
+                if (k.disabled || seen[k.name]) { continue; }
+                var v = lcValuesJson(k);
+                if (!v) { continue; }
+                seen[k.name] = true;
+                out += (first ? '' : ',') + '"' + lcEsc(k.name) + '":' + v; first = false;
             }
-            n++;
         }
-        return 'OK:' + n;
+        return out + '}';
+    } catch (e) { return lcErr(e); }
+}
+// Names of the clips a Grade change goes to: selected / same camera as the selection / all enabled on V1
+function lcTargetNames(scope) {
+    try {
+        var s = app.project.activeSequence;
+        if (!s) { return '{"error":"Open one of the client sequences first."}'; }
+        var names = [], seen = {}, cams = {}, i, c;
+        var sel = s.getSelection();
+        for (i = 0; sel && i < sel.length; i++) { if (sel[i].mediaType === 'Video' && !sel[i].disabled) { cams[lcCamera(sel[i].name)] = true; } }
+        var t = s.videoTracks[0];
+        for (i = 0; t && i < t.clips.numItems; i++) {
+            c = t.clips[i];
+            if (c.disabled || seen[c.name]) { continue; }
+            var pick = scope === 'all' || (scope === 'camera' && cams[lcCamera(c.name)]);
+            if (scope === 'selected') { try { pick = c.isSelected(); } catch (e1) { pick = false; } }
+            if (pick) { names.push('"' + lcEsc(c.name) + '"'); seen[c.name] = true; }
+        }
+        var camList = ''; for (var k in cams) { camList += (camList ? ',' : '') + '"' + lcEsc(k) + '"'; }
+        return '{"sequence":"' + lcEsc(s.name) + '","sequenceId":"' + lcEsc(s.sequenceID) + '","position":"' + s.getPlayerPosition().ticks +
+            '","projectPath":"' + lcEsc(app.project.path) + '","cameras":[' + camList + '],"names":[' + names.join(',') + ']}';
+    } catch (e) { return lcErr(e); }
+}
+// Save + close the project so its file can be edited (Color Mode is invisible to scripts)
+function lcCloseForEdit() {
+    try {
+        var p = app.project, path = p.path;
+        p.save();
+        var ok = p.closeDocument(true, false);
+        return ok === false ? 'ERR:Premiere did not close the project' : 'OK';
+    } catch (e) { return 'ERR:' + e.toString(); }
+}
+function lcReopen(path, seqId, ticks) {
+    try {
+        app.openDocument(path, true, true, true);
+        var p = app.project;
+        for (var i = 0; i < p.sequences.numSequences; i++) {
+            if (p.sequences[i].sequenceID === seqId) {
+                p.openSequence(seqId);
+                try { p.activeSequence.setPlayerPosition(String(ticks)); } catch (e1) {}
+                break;
+            }
+        }
+        return 'OK';
     } catch (e) { return 'ERR:' + e.toString(); }
 }
 
@@ -234,14 +262,15 @@ function lcSyncMarkers() {
         return 'OK:' + n;
     } catch (e) { return 'ERR:' + e.toString(); }
 }
-// outPath has no extension: Premiere adds .jpg itself
+// Still image of the frame at ticks. outPath has no extension: Premiere adds it. PNG, or JPEG when PNG is unavailable.
 function lcStill(ticks, outPath) {
     try {
         var s = app.project.activeSequence;
         s.setPlayerPosition(String(ticks));
         app.enableQE();
         var q = qe.project.getActiveSequence();
+        if (typeof q.exportFramePNG === 'function') { q.exportFramePNG(q.CTI.timecode, outPath); return 'OK:png'; }
         q.exportFrameJPEG(q.CTI.timecode, outPath);
-        return 'OK';
+        return 'OK:jpg';
     } catch (e) { return 'ERR:' + e.toString(); }
 }

@@ -368,7 +368,8 @@
       review.sscope = b.getAttribute('data-v');
     });
   });
-  function stillsDir() { return state.info ? path.join(path.dirname(path.dirname(state.info.projectPath)), 'QC Stills') : ''; }
+  // Images go to the export folder (the client's Final Output) / Stills
+  function stillsDir() { return state.outDir ? path.join(state.outDir, 'Stills') : ''; }
   $('rstills').addEventListener('click', async function () {
     if (state.busy) return;
     var info; try { info = JSON.parse(await evalJsx('ugInfo()')); } catch (e) { info = { error: 'Premiere did not answer.' }; }
@@ -395,7 +396,7 @@
         var b = await evalJsx('ugStill(' + q(String(Number(c.endTicks) - frame)) + ',' + q(path.join(dir, stem + '_OUT')) + ')');
         if (a !== 'OK' || b !== 'OK') failed++;
       }
-      $('rstatus').textContent = (clips.length - failed) * 2 + ' stills saved to ' + dir + (failed ? ' (' + failed + ' clips failed)' : '') + '.';
+      $('rstatus').textContent = (clips.length - failed) * 2 + ' images saved to ' + path.basename(path.dirname(dir)) + ' / Stills' + (failed ? ' (' + failed + ' clips failed)' : '') + '.';
     } catch (e) { $('rstatus').textContent = 'Stopped: ' + e.message; }
     state.busy = false; $('rstills').disabled = false;
   });
