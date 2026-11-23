@@ -15,6 +15,9 @@
   var HOME_DIR = path.join(os.homedir(), 'UAI Luma Cut');
   var MEMORY_FILE = path.join(HOME_DIR, 'grade_memory.jsonl');
   var BACKUP_DIR = path.join(HOME_DIR, 'backups');
+  var PARK_FILE = path.join(HOME_DIR, 'Parking.prproj');     // blank project held open while the client project is edited
+  var LOG_FILE = path.join(HOME_DIR, 'lumacut.log');
+  function log(msg) { try { fs.mkdirSync(HOME_DIR, { recursive: true }); fs.appendFileSync(LOG_FILE, new Date().toISOString() + '  ' + msg + '\n'); } catch (e) {} }
   var REPO = 'agentixclaude/uai-smart-export';
   var VERSION_URL = 'https://raw.githubusercontent.com/' + REPO + '/main/luma-cut/version.json';
   var ZIP_URL = 'https://codeload.github.com/' + REPO + '/zip/refs/heads/main';
@@ -478,15 +481,19 @@
     var file = info.projectPath, report = null, err = null;
     try {
       setStatus('gstatus', 'Saving and closing the project…');
-      var c = await evalJsx('lcCloseForEdit()');
-      if (c !== 'OK') throw new Error(String(c).replace(/^ERR:/, ''));
-      await wait(600);
+      log('apply ' + JSON.stringify(grade.edits) + ' to ' + info.names.join(', ') + ' in ' + file);
+      var c = await evalJsx('lcCloseForEdit(' + q(PARK_FILE) + ')');
+      log('close: ' + c);
+      if (!/^OK/.test(c)) throw new Error(String(c).replace(/^ERR:/, ''));
+      await wait(800);
       backupProject(file);
       setStatus('gstatus', 'Writing Color Shift…');
       report = CM.applyAndSave(file, edits, tpl);
-    } catch (e) { err = e; }
+      log('written: ' + report.join(' | '));
+    } catch (e) { err = e; log('error: ' + (e.stack || e.message)); }
     setStatus('gstatus', 'Reopening…');
-    var o = await evalJsx('lcReopen(' + q(file) + ',' + q(info.sequenceId) + ',' + q(info.position) + ')');
+    var o = await evalJsx('lcReopen(' + q(file) + ',' + q(info.sequenceId) + ',' + q(info.position) + ',' + q(PARK_FILE) + ')');
+    log('reopen: ' + o);
     grade.busy = false; state.busy = false; $('gapply').className = 'primary';
     if (err) setStatus('gstatus', 'Not applied: ' + err.message + (o === 'OK' ? '' : ' Reopen the project from File > Open Recent.'), 'bad');
     else if (o !== 'OK') setStatus('gstatus', 'Written, but Premiere did not reopen the project. Open it from File > Open Recent.', 'warn');

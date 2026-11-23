@@ -178,21 +178,44 @@ function lcTargetNames(scope) {
             '","projectPath":"' + lcEsc(app.project.path) + '","cameras":[' + camList + '],"names":[' + names.join(',') + ']}';
     } catch (e) { return lcErr(e); }
 }
-// Save + close the project so its file can be edited (Color Mode is invisible to scripts)
-function lcCloseForEdit() {
+// Save + close the project so its file can be edited (Color Mode is invisible to scripts).
+// Premiere 27 will not close the only / active project from a script (closeDocument returns false), so if it is still open
+// we park on a small blank project first, then close the client project from the projects list.
+function lcOpenIndex(path) {
+    var want = String(path).toLowerCase();
+    for (var i = 0; i < app.projects.numProjects; i++) { if (String(app.projects[i].path).toLowerCase() === want) { return i; } }
+    return -1;
+}
+function lcCloseForEdit(parkPath) {
+    var log = [];
     try {
         var p = app.project, path = p.path;
-        p.save();
-        var ok = p.closeDocument(true, false);
-        return ok === false ? 'ERR:Premiere did not close the project' : 'OK';
-    } catch (e) { return 'ERR:' + e.toString(); }
+        p.save(); log.push('saved');
+        var ok = null;
+        try { ok = p.closeDocument(true, false); log.push('close=' + ok); } catch (e1) { log.push('close threw ' + e1); }
+        if (lcOpenIndex(path) >= 0 && parkPath) {
+            if (lcOpenIndex(parkPath) < 0) {
+                if (new File(parkPath).exists) { app.openDocument(parkPath, true, true, true, true); log.push('park opened'); }
+                else { app.newProject(parkPath); log.push('park created'); }
+            }
+            var i = lcOpenIndex(path);
+            if (i >= 0) { try { ok = app.projects[i].closeDocument(true, false); log.push('close2=' + ok); } catch (e2) { log.push('close2 threw ' + e2); } }
+        }
+        return lcOpenIndex(path) >= 0 ? 'ERR:Premiere did not close the project (' + log.join(', ') + ')' : 'OK:' + log.join(', ');
+    } catch (e) { return 'ERR:' + e.toString() + ' (' + log.join(', ') + ')'; }
 }
-function lcReopen(path, seqId, ticks) {
+function lcReopen(path, seqId, ticks, parkPath) {
     try {
-        app.openDocument(path, true, true, true);
-        var p = app.project;
-        for (var i = 0; i < p.sequences.numSequences; i++) {
-            if (p.sequences[i].sequenceID === seqId) {
+        if (lcOpenIndex(path) < 0) { app.openDocument(path, true, true, true); }
+        var p = null, i = lcOpenIndex(path);
+        if (i >= 0) { p = app.projects[i]; }
+        if (parkPath) {                                  // drop the blank parking project again
+            var k = lcOpenIndex(parkPath);
+            if (k >= 0) { try { app.projects[k].closeDocument(false, false); } catch (e2) {} }
+        }
+        if (!p) { return 'ERR:the project did not open'; }
+        for (var j = 0; j < p.sequences.numSequences; j++) {
+            if (p.sequences[j].sequenceID === seqId) {
                 p.openSequence(seqId);
                 try { p.activeSequence.setPlayerPosition(String(ticks)); } catch (e1) {}
                 break;
