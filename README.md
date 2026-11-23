@@ -11,7 +11,7 @@ Two panels for S-Log clone-client footage. They share one look and one installer
 Open **Terminal**, paste this line, press Return:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/agentixclaude/uai-smart-export/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/agentixclaude/uai-premiere-panels/main/install.sh | bash
 ```
 
 Restart Premiere Pro, then open **Window → Extensions → UAI Luma Cut** and **UAI Smart Export**.
@@ -65,3 +65,7 @@ Existing files are skipped unless *Replace existing files* is ticked.
 - `luma-cut/` — UAI Luma Cut (`com.uai.lumacut`); `lib/` holds the XML builder, MP4 reader and audio trim
 - `engine/` — Claude-mode analysis (Python: `luma_plan.py`, `trim.py`, `face.py`, `grade_analyze.py`) and `colormode/` (Color Mode skin tools: `cm_clone.py`, `cm_tool.py`)
 - To publish an update: change the files, raise the version in the panel's `version.json` and `CSXS/manifest.xml`, push to `main`.
+
+## Adding a panel
+Each panel is one folder at the top of this repo (`panel/`, `luma-cut/`, …) with its own `CSXS/manifest.xml` (a unique id such as `com.uai.<name>`), its own `version.json` and a copy of `ui.css` with its own theme in `styles.css`. Add an install block for it in `install.sh` and the panel's self-update looks for `<folder>/version.json` on `main`.
+Keep the repo small: every update downloads the whole repo as one zip. No footage, LUTs, exports or model weights in here; panels find those on the Mac.

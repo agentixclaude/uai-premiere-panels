@@ -18,7 +18,7 @@
   var PARK_FILE = path.join(HOME_DIR, 'Parking.prproj');     // blank project held open while the client project is edited
   var LOG_FILE = path.join(HOME_DIR, 'lumacut.log');
   function log(msg) { try { fs.mkdirSync(HOME_DIR, { recursive: true }); fs.appendFileSync(LOG_FILE, new Date().toISOString() + '  ' + msg + '\n'); } catch (e) {} }
-  var REPO = 'agentixclaude/uai-smart-export';
+  var REPO = 'agentixclaude/uai-premiere-panels';
   var VERSION_URL = 'https://raw.githubusercontent.com/' + REPO + '/main/luma-cut/version.json';
   var ZIP_URL = 'https://codeload.github.com/' + REPO + '/zip/refs/heads/main';
   var ENGINE_DIR = path.join(os.homedir(), 'UAI Luma Cut', 'engine');

@@ -6,7 +6,7 @@
 #        install.sh export     UAI Smart Export only
 #        install.sh lumacut    UAI Luma Cut only
 set -e
-REPO="agentixclaude/uai-smart-export"
+REPO="agentixclaude/uai-premiere-panels"
 EXT="$HOME/Library/Application Support/Adobe/CEP/extensions"
 WHAT="${1:-all}"
 TMP="$(mktemp -d)"

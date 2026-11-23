@@ -7,7 +7,7 @@
   var EXT_DIR = decodeURI(window.location.pathname).replace(/\/index\.html$/, '');
   var TEMPLATE = path.join(EXT_DIR, 'preset', 'base.epr');
   var PRESET_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'UAI Smart Export', 'presets');
-  var REPO = 'agentixclaude/uai-smart-export';     // updates are published here
+  var REPO = 'agentixclaude/uai-premiere-panels';     // updates are published here
   var VERSION_URL = 'https://raw.githubusercontent.com/' + REPO + '/main/panel/version.json';
   var ZIP_URL = 'https://codeload.github.com/' + REPO + '/zip/refs/heads/main';
   var https = nodeReq('https');
