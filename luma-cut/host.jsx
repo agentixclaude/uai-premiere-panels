@@ -179,8 +179,8 @@ function lcTargetNames(scope) {
     } catch (e) { return lcErr(e); }
 }
 // Save + close the project so its file can be edited (Color Mode is invisible to scripts).
-// Premiere 27 will not close the only / active project from a script (closeDocument returns false), so if it is still open
-// we park on a small blank project first, then close the client project from the projects list.
+// Closing the LAST open project sends Premiere to its Home screen, which unloads every panel (this one too).
+// So a small blank "parking" project is opened first; the client project is then closed from behind it.
 function lcOpenIndex(path) {
     var want = String(path).toLowerCase();
     for (var i = 0; i < app.projects.numProjects; i++) { if (String(app.projects[i].path).toLowerCase() === want) { return i; } }
@@ -189,18 +189,15 @@ function lcOpenIndex(path) {
 function lcCloseForEdit(parkPath) {
     var log = [];
     try {
-        var p = app.project, path = p.path;
-        p.save(); log.push('saved');
-        var ok = null;
-        try { ok = p.closeDocument(true, false); log.push('close=' + ok); } catch (e1) { log.push('close threw ' + e1); }
-        if (lcOpenIndex(path) >= 0 && parkPath) {
-            if (lcOpenIndex(parkPath) < 0) {
-                if (new File(parkPath).exists) { app.openDocument(parkPath, true, true, true, true); log.push('park opened'); }
-                else { app.newProject(parkPath); log.push('park created'); }
-            }
-            var i = lcOpenIndex(path);
-            if (i >= 0) { try { ok = app.projects[i].closeDocument(true, false); log.push('close2=' + ok); } catch (e2) { log.push('close2 threw ' + e2); } }
+        var path = app.project.path;
+        app.project.save(); log.push('saved');
+        if (lcOpenIndex(parkPath) < 0) {
+            if (new File(parkPath).exists) { app.openDocument(parkPath, true, true, true, true); log.push('park opened'); }
+            else { app.newProject(parkPath); log.push('park created'); }
         }
+        if (lcOpenIndex(parkPath) < 0) { return 'ERR:the blank parking project did not open (' + log.join(', ') + ')'; }
+        var i = lcOpenIndex(path);
+        if (i >= 0) { var ok = app.projects[i].closeDocument(true, false); log.push('close=' + ok); }
         return lcOpenIndex(path) >= 0 ? 'ERR:Premiere did not close the project (' + log.join(', ') + ')' : 'OK:' + log.join(', ');
     } catch (e) { return 'ERR:' + e.toString() + ' (' + log.join(', ') + ')'; }
 }

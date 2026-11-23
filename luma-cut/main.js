@@ -470,40 +470,75 @@
     return dest;
   }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // The job is written to disk before the project closes, so if Premiere ever unloads the panel mid-way,
+  // the panel finishes it (write + reopen) the next time it loads.
+  var PENDING_FILE = path.join(HOME_DIR, 'pending_apply.json');
+  async function finishApply(job) {
+    var report = null, err = null;
+    try {
+      if (!job.written) {
+        await wait(800);
+        backupProject(job.file);
+        setStatus('gstatus', 'Writing Color Shift…');
+        var tpl = JSON.parse(fs.readFileSync(CM_TEMPLATE, 'utf8'));
+        report = CM.applyAndSave(job.file, job.edits, tpl);
+        log('written: ' + report.join(' | '));
+        job.written = true; job.report = report;
+        fs.writeFileSync(PENDING_FILE, JSON.stringify(job));
+      } else report = job.report || [];
+    } catch (e) { err = e; log('error: ' + (e.stack || e.message)); }
+    setStatus('gstatus', 'Reopening…');
+    var o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
+    log('reopen: ' + o);
+    if (o === 'OK') { try { fs.unlinkSync(PENDING_FILE); } catch (e) {} }
+    return { report: report, err: err, reopened: o === 'OK' };
+  }
   $('gapply').addEventListener('click', async function () {
     if (grade.busy || !gDirty()) return;
     var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
     if (info.error || !info.names.length) { setStatus('gstatus', info.error || 'No clips to apply to.', 'warn'); return; }
-    var tpl; try { tpl = JSON.parse(fs.readFileSync(CM_TEMPLATE, 'utf8')); } catch (e) { setStatus('gstatus', 'Color Mode template is missing. Reinstall the panel.', 'bad'); return; }
+    if (!fs.existsSync(CM_TEMPLATE)) { setStatus('gstatus', 'Color Mode template is missing. Reinstall the panel.', 'bad'); return; }
     var edits = {};
     info.names.forEach(function (n) { edits[n] = { skin: grade.edits.skin, green: grade.edits.green }; });
+    var job = { file: info.projectPath, sequenceId: info.sequenceId, position: info.position, edits: edits, names: info.names, createdAt: new Date().toISOString() };
     grade.busy = true; gRender(); $('gapply').className = 'primary busy'; state.busy = true;
-    var file = info.projectPath, report = null, err = null;
+    var res;
     try {
-      setStatus('gstatus', 'Saving and closing the project…');
-      log('apply ' + JSON.stringify(grade.edits) + ' to ' + info.names.join(', ') + ' in ' + file);
+      fs.mkdirSync(HOME_DIR, { recursive: true });
+      fs.writeFileSync(PENDING_FILE, JSON.stringify(job));
+      log('apply ' + JSON.stringify(grade.edits) + ' to ' + info.names.join(', ') + ' in ' + job.file);
+      setStatus('gstatus', 'Saving and parking the project…');
       var c = await evalJsx('lcCloseForEdit(' + q(PARK_FILE) + ')');
       log('close: ' + c);
       if (!/^OK/.test(c)) throw new Error(String(c).replace(/^ERR:/, ''));
-      await wait(800);
-      backupProject(file);
-      setStatus('gstatus', 'Writing Color Shift…');
-      report = CM.applyAndSave(file, edits, tpl);
-      log('written: ' + report.join(' | '));
-    } catch (e) { err = e; log('error: ' + (e.stack || e.message)); }
-    setStatus('gstatus', 'Reopening…');
-    var o = await evalJsx('lcReopen(' + q(file) + ',' + q(info.sequenceId) + ',' + q(info.position) + ',' + q(PARK_FILE) + ')');
-    log('reopen: ' + o);
+      res = await finishApply(job);
+    } catch (e) {
+      log('error: ' + e.message);
+      try { fs.unlinkSync(PENDING_FILE); } catch (e2) {}
+      var o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
+      res = { err: e, reopened: o === 'OK', report: null };
+    }
     grade.busy = false; state.busy = false; $('gapply').className = 'primary';
-    if (err) setStatus('gstatus', 'Not applied: ' + err.message + (o === 'OK' ? '' : ' Reopen the project from File > Open Recent.'), 'bad');
-    else if (o !== 'OK') setStatus('gstatus', 'Written, but Premiere did not reopen the project. Open it from File > Open Recent.', 'warn');
+    if (res.err) setStatus('gstatus', 'Not applied: ' + res.err.message + (res.reopened ? '' : ' Reopen the project from File > Open Recent.'), 'bad');
+    else if (!res.reopened) setStatus('gstatus', 'Written, but Premiere did not reopen the project. Open it from File > Open Recent.', 'warn');
     else {
-      var changed = report.filter(function (l) { return !/skipped/.test(l); }).length;
-      setStatus('gstatus', 'Applied to ' + plural(info.names.length) + '. Check the look; Review ✓ records it.', changed ? 'ok' : 'warn');
+      setStatus('gstatus', 'Applied to ' + plural(info.names.length) + '. Check the look; Review ✓ records it.', 'ok');
       grade.edits = { skin: {}, green: {} };
     }
     await refresh(); gradeRefresh();
   });
+  // finish an Apply that was cut off (panel unloaded while the project was closed)
+  async function resumePendingApply() {
+    var job = readJson(PENDING_FILE); if (!job || !job.file) return;
+    if (Date.now() - new Date(job.createdAt).getTime() > 30 * 60 * 1000) { try { fs.unlinkSync(PENDING_FILE); } catch (e) {} return; }
+    var open = await evalJsx('lcOpenIndex(' + q(job.file) + ')');
+    if (Number(open) >= 0) { log('pending job dropped: project is open again'); try { fs.unlinkSync(PENDING_FILE); } catch (e) {} return; }
+    log('resuming pending apply');
+    grade.busy = true; state.busy = true;
+    var res = await finishApply(job);
+    grade.busy = false; state.busy = false;
+    setStatus('status', res.err ? 'An interrupted Grade Apply could not be finished: ' + res.err.message : 'Finished the interrupted Grade Apply on ' + plural(job.names.length) + '.', res.err ? 'bad' : 'ok');
+  }
 
   // ---------------- review ----------------
   var review = { data: null, sscope: 'selected' };
@@ -764,6 +799,7 @@
   var last = load('lc:client');
   if (last && fs.existsSync(last)) openClient(last); else renderClient();
   var lastFocus = 0;     // one re-read per return to the panel; never while building, applying or saving images
+  resumePendingApply();
   window.addEventListener('focus', function () {
     var t = Date.now();
     if (state.busy || grade.busy || t - lastFocus < 1500) return;
