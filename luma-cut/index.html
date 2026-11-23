@@ -59,15 +59,6 @@
     <div class="list" id="clips"><div class="empty">Choose a client folder to see its clips.</div></div>
   </section>
 
-  <section>
-    <div class="cap"><span>Project panel</span></div>
-    <div class="row spread">
-      <span class="muted">Label, Name, Frame Rate, Video Duration, Video Info</span>
-      <button id="scolumns">Apply S-log columns</button>
-    </div>
-    <div class="note">Build applies them too. To sort, click the Video Info header until the arrow points down.</div>
-  </section>
-
   <footer>
     <div class="row" id="targetrow">
       <span id="target" class="muted"></span>
@@ -103,11 +94,10 @@
       <button id="gcopy">Copy from selected clip</button>
       <button id="greset" class="ghost">Undo changes</button>
     </div>
-    <div id="gclip" class="note">Hue toward pink is +. Changed values turn copper; only those are written.</div>
+    <div id="gclip" class="note">Hue toward pink is +. Values are read from the last save; changed ones turn copper and only those are written. Apply saves, closes and reopens the project (about 10 s).</div>
   </section>
   <footer>
-    <button id="gapply" class="primary" disabled>Apply</button>
-    <div class="note" style="margin-top:0">Premiere saves, closes and reopens the project to write Color Shift (about 10 s). Undo history starts fresh.</div>
+    <button id="gapply" class="primary" disabled title="Premiere saves, closes and reopens the project to write Color Shift (about 10 s). Undo history starts fresh.">Apply</button>
     <div id="gstatus" class="status"></div>
   </footer>
 </div>
@@ -126,20 +116,16 @@
     <div class="list" id="rlist"><div class="empty">Open one of the client sequences.</div></div>
   </section>
   <section>
-    <div class="cap"><span>Images</span><span class="end">PNG · Final Output / Stills</span></div>
+    <div class="cap"><span>Images</span><button id="ropen" class="link end" title="Open Final Output / Stills">PNG · Final Output / Stills</button></div>
     <div class="seg" id="sscope">
       <button data-v="selected" class="on">Selected</button>
       <button data-v="review">Flagged</button>
       <button data-v="all">All clips</button>
     </div>
-    <div class="row opts">
-      <button id="rstills">Save image</button>
-      <button id="ropen" class="ghost">Open folder</button>
-    </div>
   </section>
   <section>
     <div class="cap"><span>Review ✓</span><span id="rbase" class="end"></span></div>
-    <div class="row"><button id="rcheck">Check my changes</button><button id="rbaseline" class="ghost" hidden>Start tracking from here</button></div>
+    <div class="row"><button id="rbaseline" class="ghost" hidden>Start tracking from here</button></div>
     <div id="rchanges" class="changes" hidden></div>
     <textarea id="rnote" placeholder="What you changed and why, e.g. raised green-screen Lum so CAM1 matches CAM2; Sat +4 to make skin a bit more alive." hidden></textarea>
     <div class="row" id="rconfirmrow" hidden>
@@ -147,7 +133,13 @@
       <button id="rconfirm" class="confirm">Confirm review ✓</button>
     </div>
   </section>
-  <footer><div id="rstatus" class="status"></div></footer>
+  <footer>
+    <div class="actions">
+      <button id="rstills" class="second">Save image</button>
+      <button id="rcheck" class="second">Check my changes</button>
+    </div>
+    <div id="rstatus" class="status"></div>
+  </footer>
 </div>
 
 <!-- ABOUT -->
@@ -173,7 +165,7 @@
     <ul class="facts">
       <li>Confirmed reviews are remembered (<span class="mono">~/UAI Luma Cut/grade_memory.jsonl</span>) and read by Claude on the next client.</li>
       <li>Building again replaces the Sequences bin. The XML it imports stays in Project File.</li>
-      <li>Sorting the Project panel is one click by hand: Video Info header, arrow down.</li>
+      <li>S-log columns are set on the Project panel by themselves when a client project opens. Sorting is one click: Video Info header, arrow down.</li>
     </ul>
     <div class="row opts"><span id="ffmpegstate" class="chip"></span><span id="enginestate" class="chip"></span></div>
   </section>

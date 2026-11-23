@@ -355,6 +355,7 @@
       pc.hidden = inClient; pc.textContent = 'other client'; pc.className = 'chip warn';
     } else pc.hidden = true;
     renderMode(); renderClips(); renderTarget();
+    if (!state.busy) autoColumns(state.info);
     $('ffmpegstate').textContent = state.ffmpeg ? 'ffmpeg found' : 'ffmpeg missing';
     $('ffmpegstate').className = 'chip' + (state.ffmpeg ? ' ok' : ' warn');
     var eng = fs.existsSync(path.join(ENGINE_DIR, 'luma_plan.py'));
@@ -415,16 +416,22 @@
       $(part === 'skin' ? 'gskin' : 'ggreen').appendChild(row);
     });
   });
+  // Read Color Shift from the project as last saved. Never saves: saving on every look made Premiere save over and over
+  // (save -> panel regains focus -> refresh -> save ...). Cached by file time, so returning to the panel costs nothing.
+  var cmCache = { file: '', mtime: 0, values: {} };
   function readColorShift(projectPath) {
-    var ctx = CM.load(projectPath);
-    return CM.readAll(ctx);
+    var m = fs.statSync(projectPath).mtimeMs;
+    if (cmCache.file === projectPath && cmCache.mtime === m) return cmCache.values;
+    var values = CM.readAll(CM.load(projectPath));
+    cmCache = { file: projectPath, mtime: m, values: values };
+    return values;
   }
   async function gradeRefresh() {
     if (grade.busy) return;
     var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
     grade.info = info.error ? null : info;
     if (info.error) { $('gtarget').textContent = info.error; gRender(); return; }
-    try { await evalJsx('lcSave()'); grade.values = readColorShift(info.projectPath); } catch (e) { grade.values = {}; }
+    try { grade.values = readColorShift(info.projectPath); } catch (e) { grade.values = {}; }
     var names = info.names || [];
     grade.shown = names.length && grade.values[names[0]] ? grade.values[names[0]] : { skin: { hue: 0, sat: 0, lum: 0 }, green: { hue: 0, sat: 0, lum: 0 } };
     var t = !names.length ? (grade.scope === 'selected' ? 'Select clips in the timeline, then press Refresh.' : grade.scope === 'camera' ? 'Select one clip of the camera, then press Refresh.' : 'No enabled clips on V1.')
@@ -689,13 +696,18 @@
     setStatus('rstatus', msg, 'ok'); showBaseInfo();
   });
 
-  // ---------------- project panel (Build tab) ----------------
-  $('scolumns').addEventListener('click', async function () {
-    var xml; try { xml = fs.readFileSync(path.join(EXT_DIR, 'columns', 's-log.xml'), 'utf8'); } catch (e) { setStatus('status', 'Column file is missing. Reinstall the panel.', 'bad'); return; }
+  // ---------------- project panel: S-log columns by default ----------------
+  // Set once per project per session when a client project is open (the build sets them too). No button, no save.
+  var colsDone = {};
+  async function autoColumns(info) {
+    if (!info || !info.open || colsDone[info.projectPath]) return;
+    var client = state.client && String(info.projectPath).toLowerCase().indexOf(state.client.dir.toLowerCase() + '/') === 0;
+    if (!client && !info.hasSequencesBin) return;
+    colsDone[info.projectPath] = true;
+    var xml; try { xml = fs.readFileSync(path.join(EXT_DIR, 'columns', 's-log.xml'), 'utf8'); } catch (e) { return; }
     var r = await evalJsx('lcColumns(' + q(xml) + ')');
-    if (r === 'OK') setStatus('status', 'S-log columns applied. To sort, click the Video Info header until the arrow points down.', 'ok');
-    else setStatus('status', 'Could not apply: ' + String(r).replace(/^ERR:/, ''), 'bad');
-  });
+    if (r !== 'OK') delete colsDone[info.projectPath];      // try again on the next refresh
+  }
 
   // ---------------- self-update (GitHub) ----------------
   function localVersion() { try { return JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'version.json'), 'utf8')).version; } catch (e) { return '0.0.0'; } }
@@ -744,6 +756,11 @@
   checkUpdate();
   var last = load('lc:client');
   if (last && fs.existsSync(last)) openClient(last); else renderClient();
-  window.addEventListener('focus', function () { refresh(); refreshTab(); });
+  var lastFocus = 0;     // one re-read per return to the panel; never while building, applying or saving images
+  window.addEventListener('focus', function () {
+    var t = Date.now();
+    if (state.busy || grade.busy || t - lastFocus < 1500) return;
+    lastFocus = t; refresh(); refreshTab();
+  });
   refresh();
 })();

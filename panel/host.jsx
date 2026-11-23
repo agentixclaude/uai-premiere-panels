@@ -30,7 +30,7 @@ function ugInfo() {
                     try { sel = k.isSelected(); } catch (e1) {}
                     if (!first) { out += ','; }
                     first = false;
-                    out += '{"name":"' + ugEsc(k.name) + '","start":' + k.start.seconds + ',"end":' + k.end.seconds + ',"startTicks":"' + k.start.ticks + '","endTicks":"' + k.end.ticks + '","enabled":' + (k.disabled ? 'false' : 'true') + ',"selected":' + (sel ? 'true' : 'false') + '}';
+                    out += '{"name":"' + ugEsc(k.name) + '","start":' + k.start.seconds + ',"end":' + k.end.seconds + ',"startTicks":"' + k.start.ticks + '","endTicks":"' + k.end.ticks + '","inPoint":' + k.inPoint.seconds + ',"outPoint":' + k.outPoint.seconds + ',"enabled":' + (k.disabled ? 'false' : 'true') + ',"selected":' + (sel ? 'true' : 'false') + '}';
                 }
             }
             out += ']}';

@@ -1,18 +1,49 @@
-/* UAI Smart Export — panel-only styles (shared system in ui.css) */
-.clip { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 4px 8px; border-top: 1px solid #222; align-items: baseline; }
+/* UAI Smart Export — its own theme (structure in ui.css)
+   Cool slate surfaces, a lime "go" accent and a play-arrow mark, so it never reads as Luma Cut's warm copper. */
+:root {
+  --bg: #1b1e21;
+  --bg-sunk: #141619;
+  --bg-raised: #252a2e;
+  --bg-hover: #2e3439;
+  --line: #353c42;
+  --line-soft: #262b30;
+  --text: #e6eaee;
+  --text-2: #a9b2ba;
+  --text-3: #87919a;
+  --title: #f1f4f6;
+  --accent: #b8e05a;
+  --accent-hover: #c7ea74;
+  --accent-ink: #151a07;
+  --accent-soft: rgba(184, 224, 90, .13);
+  --accent-line: rgba(184, 224, 90, .45);
+  --accent-text: #cfe99a;
+  --sel: rgba(184, 224, 90, .3);
+  --ok: #63d0a7;
+  --ok-line: rgba(99, 208, 167, .42);
+  --warn: #e8b84e;
+  --bad: #f2776b;
+  --bad-line: rgba(242, 119, 107, .45);
+  --head-bg: #171a1d;
+  --row-line: #1f2327;
+  --hover-line: #444c53;
+  --press: #23282c;
+  --seg-hover: #1c2024;
+  --thumb: #3a4249;
+  --thumb-hover: #4a535b;
+}
+h1::before { width: 7px; height: 9px; border-radius: 0; box-shadow: none; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+
+/* export folder: one line, path ellipsised from the left so the client folder name stays visible */
+.dir { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.dir .path { margin: 0; min-height: 26px; height: 26px; padding: 0 9px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  direction: rtl; text-align: left; word-break: normal; }
+.cap .link.end { order: 2; font-size: 11px; }
+
+/* the clip list is the panel */
+section.grow { min-height: 140px; }
+.clip { display: grid; grid-template-columns: minmax(0, 1fr) auto 62px; gap: 10px; align-items: center; padding: 5px 9px; border-top: 1px solid var(--row-line); }
 .list .head + .clip { border-top: 0; }
-.clip .n { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.clip .m { color: var(--text-3); font-variant-numeric: tabular-nums; font-size: 11px; }
-.clip .s { min-width: 58px; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.clip.queued .s, .clip.ok .s { color: var(--ok); }
-.clip.skipped .s { color: var(--warn); }
-.clip.failed .s { color: var(--bad); }
-.clip.exists .n::after { content: "  file exists"; color: var(--warn); font-size: 11px; }
-.mrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; padding: 4px 8px; border-top: 1px solid #222; cursor: pointer; }
-.mrow:first-child { border-top: 0; }
-.mrow:hover { background: #222; }
-.mrow .t { color: var(--text-3); font-variant-numeric: tabular-nums; }
-.mrow .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mrow.review .n { color: var(--warn); }
-.mrow .c { grid-column: 2; color: var(--text-3); font-size: 11px; }
-#sizecheck { width: 100%; }
+.clip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.clip .t { color: var(--text-3); font-size: 11px; }
+.clip .chip { justify-content: center; }
+.clip.failed .n { color: var(--bad); }

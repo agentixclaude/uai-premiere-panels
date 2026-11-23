@@ -20,115 +20,43 @@
   <button id="updatebtn">Update now</button>
 </div>
 
-<nav class="tabs" id="tabs">
-  <button data-tab="export" class="on">Export</button>
-  <button data-tab="grade">Grade</button>
-  <button data-tab="review">Review</button>
-  <button data-tab="setup">Setup</button>
-</nav>
-
-<div class="tab" id="tab-export">
-<section>
-  <div class="cap"><span>Export folder</span></div>
-  <div id="outdir" class="path" title=""></div>
-  <div class="row">
-    <button id="browse">Browse…</button>
-    <button id="reveal" class="ghost">Open folder</button>
-    <button id="resetdir" class="ghost">Use Final Output</button>
-  </div>
-  <div class="note">Every file: 4K in its sequence's orientation (3840×2160 or 2160×3840), H.264, under the size cap.</div>
-</section>
-
-<section>
-  <div class="cap"><span>What to export</span></div>
-  <div class="seg" id="scope">
-    <button data-v="all" class="on">All sequences</button>
-    <button data-v="active">Active sequence</button>
-    <button data-v="selected">Selected clips</button>
-  </div>
-  <div class="row opts">
-    <label>Max file size <input id="capgb" type="number" min="0.2" step="0.1" value="2"> GB</label>
-    <label>Max <input id="capmbps" type="number" min="5" step="5" value="200"> Mbps</label>
-  </div>
-  <div class="row opts">
-    <label><input id="replace" type="checkbox"> Replace existing files</label>
-    <label><input id="autostart" type="checkbox"> Start queue automatically</label>
-  </div>
-</section>
-
-<section class="grow">
-  <div id="list" class="list"></div>
-  <div class="cap" style="margin:8px 0 0"><span id="count">0 clips</span><span id="summary" class="end"></span></div>
-</section>
-
-<footer>
-  <button id="go" class="primary" disabled>Export all</button>
-  <button id="sizecheck" class="ghost">Check exported files</button>
-  <div id="status" class="status"></div>
-</footer>
-</div>
-
-<div class="tab" id="tab-grade" hidden>
+<main class="tab" id="tab-export">
   <section>
-    <div class="cap"><span>Adjust</span></div>
-    <div class="seg" id="gscope">
-      <button data-v="selected" class="on">Selected clips</button>
-      <button data-v="all">All clips in sequence</button>
-    </div>
-    <div id="gtarget" class="note"></div>
-  </section>
-  <section>
-    <div id="gparams"></div>
-  </section>
-  <section>
-    <div class="cap"><span>Copy grade</span></div>
-    <div class="row">
-      <button id="gcopy">Copy from selected clip</button>
-    </div>
-    <div id="gclip" class="note">Nothing copied yet.</div>
-    <div class="row" style="margin-top:6px">
-      <button id="gpaste" disabled>Paste to selected</button>
-      <button id="gpastecam" disabled>Paste to same camera</button>
+    <div class="cap"><span>Export to</span><button id="resetdir" class="link end" title="Go back to the client's Final Output folder">Use Final Output</button></div>
+    <div class="dir">
+      <div id="outdir" class="path" title=""></div>
+      <button id="browse" title="Choose another folder">Change…</button>
+      <button id="reveal" class="ghost" title="Open the folder in Finder">Open</button>
     </div>
   </section>
-  <footer><div id="gstatus" class="status"></div></footer>
-</div>
 
-<div class="tab" id="tab-review" hidden>
   <section>
-    <div class="cap"><span>Review markers</span></div>
-    <div class="row">
-      <button id="rprev">Previous</button>
-      <button id="rnext">Next</button>
-      <label><input id="rall" type="checkbox"> Show every IN / OUT marker</label>
-    </div>
-  </section>
-  <section class="grow">
-    <div id="rlist" class="list"></div>
-  </section>
-  <section>
-    <div class="cap"><span>Images</span><span class="end">PNG · Final Output / Stills</span></div>
-    <div class="seg" id="sscope">
-      <button data-v="selected" class="on">Selected clips</button>
-      <button data-v="review">Review clips</button>
-      <button data-v="all">All clips</button>
+    <div class="seg" id="scope">
+      <button data-v="all" class="on">All sequences</button>
+      <button data-v="active">Active sequence</button>
+      <button data-v="selected">Selected clips</button>
     </div>
     <div class="row opts">
-      <button id="rstills">Save image</button>
-      <button id="ropen" class="ghost">Open folder</button>
+      <label>Max <input id="capgb" type="number" min="0.2" step="0.1" value="2"> GB</label>
+      <label>Max <input id="capmbps" type="number" min="5" step="5" value="200"> Mbps</label>
+      <label><input id="replace" type="checkbox"> Replace existing</label>
+      <label><input id="autostart" type="checkbox"> Start queue</label>
     </div>
   </section>
-  <footer><div id="rstatus" class="status"></div></footer>
-</div>
 
-<div class="tab" id="tab-setup" hidden>
-  <section>
-    <div class="cap"><span>Project panel</span></div>
-    <div class="row"><button id="scolumns">Apply S-log columns</button></div>
-    <div class="note">Shows Label, Name, Frame Rate, Video Duration and Video Info. To sort, click the Video Info column header until the arrow points down.</div>
+  <section class="grow">
+    <div class="cap"><span id="count">0 clips</span><span id="summary" class="end"></span></div>
+    <div id="list" class="list"></div>
   </section>
-  <footer><div id="sstatus" class="status"></div></footer>
-</div>
+
+  <footer>
+    <div class="actions">
+      <button id="go" class="primary" disabled>Export all</button>
+      <button id="sizecheck" class="second" title="Check every file in the export folder: is it there, and is it under the size cap?">Final Output</button>
+    </div>
+    <div id="status" class="status"></div>
+  </footer>
+</main>
 <script src="main.js"></script>
 </body>
 </html>
