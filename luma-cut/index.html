@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>UAI Luma Cut</title>
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>UAI Luma Cut</h1>
+    <div class="sub"><span id="project">No project open</span><span id="projchip" class="chip" hidden></span></div>
+  </div>
+  <div class="hright"><span id="ver" class="ver"></span><button id="refresh" class="ghost" title="Re-read the project and the client folder">Refresh</button></div>
+</header>
+
+<div id="update" class="update" hidden>
+  <span id="updatetext"></span>
+  <button id="updatebtn">Update now</button>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="build" class="on">Build</button>
+  <button data-tab="grade">Grade</button>
+  <button data-tab="review">Review</button>
+  <button data-tab="about">About</button>
+</nav>
+
+<!-- BUILD -->
+<div class="tab" id="tab-build">
+  <section>
+    <div class="cap"><span>Client folder</span><span id="acchip" class="chip" hidden></span></div>
+    <div id="clientdir" class="path empty">Choose the client's folder (the one holding Raw Data and Project File).</div>
+    <div class="row">
+      <button id="browse">Choose folder…</button>
+      <button id="reveal" class="ghost" disabled>Open in Finder</button>
+    </div>
+    <div id="clientmeta" class="note"></div>
+  </section>
+
+  <section>
+    <div class="cap"><span>Trim and grade</span></div>
+    <div class="seg" id="mode">
+      <button data-v="standalone" class="on">Standalone</button>
+      <button data-v="claude">Claude</button>
+    </div>
+    <div id="modenote" class="note"></div>
+    <div id="claudebox" class="claude" hidden>
+      <div class="row spread">
+        <button id="askclaude">Ask Claude</button>
+        <span id="planstate" class="chip">No plan yet</span>
+      </div>
+      <div id="prompt" class="prompt" hidden></div>
+    </div>
+  </section>
+
+  <section class="grow">
+    <div class="list" id="clips"><div class="empty">Choose a client folder to see its clips.</div></div>
+  </section>
+
+  <footer>
+    <div class="row" id="targetrow">
+      <span id="target" class="muted"></span>
+      <button id="newproj" class="ghost" hidden>New project for this client</button>
+    </div>
+    <div class="progress" id="progress" hidden><div></div></div>
+    <button id="build" class="primary" disabled>Analyse and build</button>
+    <div id="status" class="status"></div>
+  </footer>
+</div>
+
+<!-- GRADE -->
+<div class="tab" id="tab-grade" hidden>
+  <section>
+    <div class="cap"><span>Adjust the Best grade</span></div>
+    <div class="seg" id="gscope">
+      <button data-v="selected" class="on">Selected clips</button>
+      <button data-v="all">All clips in sequence</button>
+    </div>
+    <div id="gtarget" class="note"></div>
+  </section>
+  <section><div id="gparams"></div></section>
+  <section>
+    <div class="cap"><span>Copy grade</span></div>
+    <div class="row"><button id="gcopy">Copy from selected clip</button></div>
+    <div id="gclip" class="note">Nothing copied yet.</div>
+    <div class="row" style="margin-top:6px">
+      <button id="gpaste" disabled>Paste to selected</button>
+      <button id="gpastecam" disabled>Paste to same camera</button>
+    </div>
+  </section>
+  <section>
+    <div class="cap"><span>Custom</span></div>
+    <div class="note" style="margin-top:0">Your own skin tweak lives in a Color Mode adjustment with Color Shift (Hue 3–7, Sat 1–3, Lum by light). Add it in the Color tab: scripts cannot create or copy it.</div>
+  </section>
+  <footer><div id="gstatus" class="status"></div></footer>
+</div>
+
+<!-- REVIEW -->
+<div class="tab" id="tab-review" hidden>
+  <section>
+    <div class="row">
+      <button id="rprev">Previous flag</button>
+      <button id="rnext">Next flag</button>
+      <button id="rsync" class="ghost" title="Put every IN / OUT marker back on its clip's first and last frame">Re-sync markers</button>
+    </div>
+    <div class="note" style="margin-top:6px">To move an IN or OUT, use a Rolling Edit on the cut, then press Re-sync markers.</div>
+  </section>
+  <section class="grow">
+    <div class="list" id="rlist"><div class="empty">Open one of the client sequences.</div></div>
+  </section>
+  <section>
+    <div class="cap"><span>IN / OUT stills</span><span class="muted">active sequence</span></div>
+    <div class="seg" id="sscope">
+      <button data-v="selected" class="on">Selected</button>
+      <button data-v="review">Flagged</button>
+      <button data-v="all">All clips</button>
+    </div>
+    <div class="row opts">
+      <button id="rstills">Save stills</button>
+      <button id="ropen" class="ghost">Open folder</button>
+    </div>
+  </section>
+  <footer><div id="rstatus" class="status"></div></footer>
+</div>
+
+<!-- ABOUT -->
+<div class="tab" id="tab-about" hidden>
+  <section>
+    <div class="cap"><span>Works without Claude</span></div>
+    <ul class="facts">
+      <li>Reads every clip's size, rotation, frame rate and length.</li>
+      <li>Builds the project: one sequence per size and orientation (8K HZ, 8K VER, 4K HZ, 4K VER), head and tail cut and disabled, IN/OUT markers, S-Log Lumetri with the ALEXA LUT, vertical clips rotated.</li>
+      <li>Trims from the audio: about 0.8 s before the first word and 0.6 s after the last. Needs ffmpeg.</li>
+      <li>House grade on every clip, then nudge, copy and paste per camera.</li>
+      <li>Review: jump to flags, re-sync markers after a rolling edit, save IN/OUT stills.</li>
+      <li>S-log Project panel columns.</li>
+    </ul>
+  </section>
+  <section>
+    <div class="cap"><span>Better with Claude</span></div>
+    <ul class="facts">
+      <li>IN and OUT on a frame with the mouth closed and the eyes open.</li>
+      <li>Grade matched per clip: skin brightness and colour, bright highlights pulled down.</li>
+      <li>Flags clips with no usable face frame for you to check.</li>
+    </ul>
+  </section>
+  <section>
+    <div class="cap"><span>By hand</span></div>
+    <ul class="facts">
+      <li>Custom Color Mode adjustment (Color Shift).</li>
+      <li>Sorting the Project panel: click the Video Info header until the arrow points down.</li>
+    </ul>
+  </section>
+  <section>
+    <div class="cap"><span>Project panel</span></div>
+    <div class="row"><button id="scolumns">Apply S-log columns</button><span id="ffmpegstate" class="chip"></span></div>
+  </section>
+  <footer><div id="astatus" class="status"></div></footer>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>

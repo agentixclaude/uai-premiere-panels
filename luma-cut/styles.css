@@ -1,0 +1,27 @@
+/* UAI Luma Cut — panel-only styles (shared system in ui.css) */
+.claude { margin-top: 8px; padding: 8px; border: 1px solid var(--line-soft); border-radius: var(--r); background: #202020; display: flex; flex-direction: column; gap: 8px; }
+.prompt { padding: 6px 8px; background: var(--bg-sunk); border: 1px solid var(--line-soft); border-radius: 3px; color: var(--text);
+  font: 11px/1.45 "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; -webkit-user-select: text; }
+
+.clip { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 4px 8px; border-top: 1px solid #222; }
+.clip:first-child { border-top: 0; }
+.clip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.clip .n small { color: var(--text-3); font-size: 11px; margin-left: 6px; }
+.clip .t { color: var(--text-3); font-variant-numeric: tabular-nums; font-size: 11px; }
+.clip.skip .n { color: var(--text-3); text-decoration: line-through; }
+.clip.flag .n { color: var(--warn); }
+.clip .chip { min-width: 52px; justify-content: center; }
+
+.rclip { padding: 4px 8px; border-top: 1px solid #222; }
+.rclip:first-child { border-top: 0; }
+.rclip .top { display: flex; justify-content: space-between; gap: 8px; }
+.rclip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rclip.flag .n { color: var(--warn); }
+.rclip .marks { display: flex; gap: 6px; margin-top: 3px; }
+.rclip .marks button { height: 20px; padding: 0 7px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.rclip .why { margin-top: 3px; color: var(--warn); font-size: 11px; }
+
+.facts { margin: 0; padding-left: 16px; color: var(--text-2); }
+.facts li { margin: 2px 0; }
+#targetrow { justify-content: space-between; min-height: 24px; }
+#target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }

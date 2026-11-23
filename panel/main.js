@@ -83,7 +83,7 @@
     var list = $('list'); list.innerHTML = '';
     var lastSeq = null, maxGb = 0;
     state.plan.forEach(function (p, i) {
-      if (p.seqName !== lastSeq) { var h = document.createElement('div'); h.className = 'seqhead'; h.textContent = p.seqName + '  ·  ' + p.w + '×' + p.h; list.appendChild(h); lastSeq = p.seqName; }
+      if (p.seqName !== lastSeq) { var h = document.createElement('div'); h.className = 'head'; h.innerHTML = '<span></span><span class="muted"></span>'; h.children[0].textContent = p.seqName; h.children[1].textContent = 'exports ' + p.w + '×' + p.h; list.appendChild(h); lastSeq = p.seqName; }
       var row = document.createElement('div'); row.className = 'clip' + (p.exists ? ' exists' : ''); row.id = 'clip' + i;
       row.innerHTML = '<span class="n"></span><span class="m"></span><span class="s"></span>';
       row.children[0].textContent = p.stem + '.mp4';
@@ -134,17 +134,25 @@
   }
 
   // ---------- run ----------
-  function status(t) { $('status').textContent = t; }
+  function status(t, tone) { var el = $('status'); el.textContent = t; el.className = 'status' + (tone ? ' tone-' + tone : ''); }
+  // AC (agency client) = a folder in the project's path named like "AC#3 …" or "AC3_…"
+  function isAcPath(p) { return String(p).split('/').some(function (seg) { return /^AC\s*#?\s*\d+([^0-9]|$)/i.test(seg) || /(^|[^A-Za-z])AC\s*#\s*\d+/i.test(seg); }); }
+  function showAc() {
+    var chip = $('acchip'); if (!state.info) { chip.hidden = true; return; }
+    var ac = isAcPath(state.info.projectPath);
+    chip.hidden = false; chip.textContent = ac ? 'AC client' : 'Client'; chip.className = 'chip' + (ac ? ' accent' : '');
+    chip.title = ac ? 'Agency client: 4K, every file under the size cap' : 'Same rules: 4K, every file under the size cap';
+  }
   async function refresh() {
     if (state.busy) return;
     var raw = await evalJsx('ugInfo()'), info = null;
     try { info = JSON.parse(raw); } catch (e) { info = { error: 'Premiere did not answer. Reopen the panel.' }; }
-    if (info.error) { state.info = null; $('project').textContent = info.error; $('outdir').textContent = ''; render(); return; }
+    if (info.error) { state.info = null; $('project').textContent = info.error; $('outdir').textContent = ''; showAc(); render(); return; }
     var changed = !state.info || state.info.projectPath !== info.projectPath;
     state.info = info;
     $('project').textContent = info.projectName.replace(/\.prproj$/i, '');
     if (changed) loadOutDir();
-    showOutDir(); render();
+    showOutDir(); showAc(); render();
   }
   async function run() {
     if (state.busy || !state.plan.length) return;
@@ -173,9 +181,9 @@
       }
       if (done && st.autostart) await evalJsx('ugStartQueue()');
       status(done + ' queued' + (skipped ? ', ' + skipped + ' skipped (file exists)' : '') + (failed ? ', ' + failed + ' failed: ' + String(state.lastError).replace(/^ERR:/, '') : '')
-             + (done ? (st.autostart ? ' — encoding started.' : ' — press Start Queue in Media Encoder.') : ''));
+             + (done ? (st.autostart ? ' — encoding started.' : ' — press Start Queue in Media Encoder.') : ''), failed ? 'bad' : done ? 'ok' : 'warn');
     } catch (e) {
-      status('Stopped: ' + e.message);
+      status('Stopped: ' + e.message, 'bad');
     }
     state.busy = false; $('go').disabled = !state.plan.length;
   }
@@ -250,7 +258,7 @@
       var gb = fs.statSync(p.out).size / 1e9;
       if (gb > st.capGb) { over++; setRow(i, 'failed', gb.toFixed(2) + ' GB'); } else { ok++; setRow(i, 'ok', gb.toFixed(2) + ' GB'); }
     });
-    status(ok + ' within ' + st.capGb + ' GB' + (over ? ', ' + over + ' over the limit' : '') + (missing ? ', ' + missing + ' not exported yet' : '') + '.');
+    status(ok + ' within ' + st.capGb + ' GB' + (over ? ', ' + over + ' over the limit' : '') + (missing ? ', ' + missing + ' not exported yet' : '') + '.', over ? 'bad' : missing ? 'warn' : 'ok');
   }
   $('sizecheck').addEventListener('click', sizeCheck);
 

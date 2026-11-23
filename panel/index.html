@@ -3,15 +3,16 @@
 <head>
 <meta charset="utf-8">
 <title>UAI Smart Export</title>
+<link rel="stylesheet" href="ui.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header>
   <div>
     <h1>UAI Smart Export</h1>
-    <div id="project" class="muted">No project</div>
+    <div class="sub"><span id="project">No project</span><span id="acchip" class="chip" hidden></span></div>
   </div>
-  <div class="hright"><span id="ver" class="muted"></span><button id="refresh" class="ghost" title="Re-read the timeline">Refresh</button></div>
+  <div class="hright"><span id="ver" class="ver"></span><button id="refresh" class="ghost" title="Re-read the timeline">Refresh</button></div>
 </header>
 
 <div id="update" class="update" hidden>
@@ -28,17 +29,18 @@
 
 <div class="tab" id="tab-export">
 <section>
-  <label class="cap">Export folder</label>
+  <div class="cap"><span>Export folder</span></div>
   <div id="outdir" class="path" title=""></div>
   <div class="row">
     <button id="browse">Browse…</button>
     <button id="reveal" class="ghost">Open folder</button>
     <button id="resetdir" class="ghost">Use Final Output</button>
   </div>
+  <div class="note">Every file: 4K in its sequence's orientation (3840×2160 or 2160×3840), H.264, under the size cap.</div>
 </section>
 
 <section>
-  <label class="cap">What to export</label>
+  <div class="cap"><span>What to export</span></div>
   <div class="seg" id="scope">
     <button data-v="all" class="on">All sequences</button>
     <button data-v="active">Active sequence</button>
@@ -55,46 +57,46 @@
 </section>
 
 <section class="grow">
-  <div class="cap"><span id="count">0 clips</span><span id="summary" class="muted"></span></div>
-  <div id="list"></div>
+  <div id="list" class="list"></div>
+  <div class="cap" style="margin:6px 0 0"><span id="count">0 clips</span><span id="summary" class="muted"></span></div>
 </section>
 
 <footer>
   <button id="go" class="primary" disabled>Export all</button>
   <button id="sizecheck" class="ghost">Check exported files</button>
-  <div id="status" class="muted"></div>
+  <div id="status" class="status"></div>
 </footer>
 </div>
 
 <div class="tab" id="tab-grade" hidden>
   <section>
-    <label class="cap">Adjust</label>
+    <div class="cap"><span>Adjust</span></div>
     <div class="seg" id="gscope">
       <button data-v="selected" class="on">Selected clips</button>
       <button data-v="all">All clips in sequence</button>
     </div>
-    <div id="gtarget" class="muted note"></div>
+    <div id="gtarget" class="note"></div>
   </section>
   <section>
     <div id="gparams"></div>
   </section>
   <section>
-    <label class="cap">Copy grade</label>
+    <div class="cap"><span>Copy grade</span></div>
     <div class="row">
       <button id="gcopy">Copy from selected clip</button>
     </div>
-    <div id="gclip" class="muted note">Nothing copied yet.</div>
-    <div class="row">
+    <div id="gclip" class="note">Nothing copied yet.</div>
+    <div class="row" style="margin-top:6px">
       <button id="gpaste" disabled>Paste to selected</button>
       <button id="gpastecam" disabled>Paste to same camera</button>
     </div>
   </section>
-  <footer><div id="gstatus" class="muted"></div></footer>
+  <footer><div id="gstatus" class="status"></div></footer>
 </div>
 
 <div class="tab" id="tab-review" hidden>
   <section>
-    <label class="cap">Review markers</label>
+    <div class="cap"><span>Review markers</span></div>
     <div class="row">
       <button id="rprev">Previous</button>
       <button id="rnext">Next</button>
@@ -102,10 +104,10 @@
     </div>
   </section>
   <section class="grow">
-    <div id="rlist"></div>
+    <div id="rlist" class="list"></div>
   </section>
   <section>
-    <label class="cap">IN / OUT stills (active sequence)</label>
+    <div class="cap"><span>IN / OUT stills</span><span class="muted">active sequence</span></div>
     <div class="seg" id="sscope">
       <button data-v="selected" class="on">Selected clips</button>
       <button data-v="review">Review clips</button>
@@ -116,16 +118,16 @@
       <button id="ropen" class="ghost">Open folder</button>
     </div>
   </section>
-  <footer><div id="rstatus" class="muted"></div></footer>
+  <footer><div id="rstatus" class="status"></div></footer>
 </div>
 
 <div class="tab" id="tab-setup" hidden>
   <section>
-    <label class="cap">Project panel</label>
+    <div class="cap"><span>Project panel</span></div>
     <div class="row"><button id="scolumns">Apply S-log columns</button></div>
-    <div class="muted note">Shows Label, Name, Frame Rate, Video Duration and Video Info. To sort, click the Video Info column header until the arrow points down.</div>
+    <div class="note">Shows Label, Name, Frame Rate, Video Duration and Video Info. To sort, click the Video Info column header until the arrow points down.</div>
   </section>
-  <footer><div id="sstatus" class="muted"></div></footer>
+  <footer><div id="sstatus" class="status"></div></footer>
 </div>
 <script src="main.js"></script>
 </body>
