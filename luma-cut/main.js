@@ -378,17 +378,30 @@
   function refreshTab() { if (activeTab === 'grade') gradeRefresh(); if (activeTab === 'review') { reviewRefresh(); showBaseInfo(); } }
   Array.prototype.forEach.call($('tabs').children, function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); }); });
 
-  // ---------------- grade: Color Mode > Color Shift on skin and green screen ----------------
+  // ---------------- grade ----------------
+  // Live: Lumetri Basic (relative nudges) and Ultra Key. Apply: Color Mode > Color Shift on skin and green (file write).
   var G_FIELDS = [['hue', 'Hue Shift'], ['sat', 'Sat Shift'], ['lum', 'Lum Shift']], G_STEP = 0.5;
-  var grade = { scope: 'selected', info: null, values: {}, shown: null, edits: { skin: {}, green: {} }, busy: false };
+  var G_LUM = [['exposure', 'Exposure', 0.1], ['contrast', 'Contrast', 2], ['highlights', 'Highlights', 5], ['shadows', 'Shadows', 5],
+               ['temperature', 'Temperature', 2], ['tint', 'Tint', 2], ['saturation', 'Saturation', 2]];
+  var LUM_ORDER = ['temperature', 'tint', 'saturation', 'exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks'];   // host order
+  var G_KEY = [['Tolerance', 5], ['Pedestal', 5], ['Choke', 2], ['Soften', 2], ['Spill', 5]];
+  var KEY_DEFAULT = [34, 133, 80];        // a typical lit green after the house grade, used only without ffmpeg
+  var PRESETS = {
+    over:   { label: 'Over-exposed',  lum: { exposure: -0.5, highlights: -15, whites: -10 }, skin: { hue: 3.5, sat: 3, lum: -3 }, green: { sat: 5, lum: -10 } },
+    normal: { label: 'Normal',        lum: null,                                             skin: { hue: 3.5, sat: 3, lum: 0 },  green: { sat: 5, lum: 0 } },
+    under:  { label: 'Under-exposed', lum: { exposure: 0.5, shadows: 15, blacks: 5 },        skin: { hue: 3.5, sat: 3, lum: 3 },  green: { sat: 5, lum: 10 } }
+  };
+  var grade = { scope: 'selected', info: null, values: {}, shown: null, edits: { skin: {}, green: {} }, busy: false, lum: null, key: null };
   function plural(n) { return n + (n === 1 ? ' clip' : ' clips'); }
   function r2(v) { return Math.round(Number(v) * 100) / 100; }
+  function sgn(v) { v = r2(v); return (v > 0 ? '+' : '') + v; }
+  function keyedOn() { return !!(grade.key && grade.key.keyed); }
   function gValue(part, k) {
     var e = grade.edits[part][k];
     if (e !== undefined) return e;
     return grade.shown ? grade.shown[part][k] : 0;
   }
-  function gDirty() { return Object.keys(grade.edits.skin).length + Object.keys(grade.edits.green).length; }
+  function gDirty() { return Object.keys(grade.edits.skin).length + (keyedOn() ? 0 : Object.keys(grade.edits.green).length); }
   function gRender() {
     ['skin', 'green'].forEach(function (part) {
       G_FIELDS.forEach(function (f) {
@@ -397,11 +410,27 @@
         inp.className = 'v' + (grade.edits[part][f[0]] !== undefined ? ' changed' : '');
       });
     });
+    var lv = grade.lum && grade.lum.values, lumOn = !!(grade.lum && grade.lum.graded) && !grade.busy;
+    G_LUM.forEach(function (f) {
+      $('gl-' + f[0]).textContent = lv && lv[f[0]] !== null && lv[f[0]] !== undefined ? r2(lv[f[0]]) : '–';
+      $('gl-' + f[0]).parentNode.querySelectorAll('button').forEach(function (b) { b.disabled = !lumOn; });
+    });
+    var k = grade.key || { count: 0, keyed: 0 }, kv = k.values;
+    $('gkey').className = 'switch end' + (k.keyed ? (k.keyed < k.count ? ' on mixed' : ' on') : '');
+    $('gkey').disabled = grade.busy || !k.count;
+    $('gkey').lastChild.textContent = k.keyed ? 'Green removed' + (k.keyed < k.count ? ' · ' + k.keyed + '/' + k.count : '') : 'Remove green';
+    $('ggreen').hidden = !!k.keyed; $('gkeyrows').hidden = !k.keyed; $('gkeynote').hidden = !k.keyed;
+    G_KEY.forEach(function (f) {
+      $('gk-' + f[0]).textContent = kv && kv[f[0]] !== null && kv[f[0]] !== undefined ? r2(kv[f[0]]) : '–';
+      $('gk-' + f[0]).parentNode.querySelectorAll('button').forEach(function (b) { b.disabled = grade.busy; });
+    });
+    Array.prototype.forEach.call($('gpresets').children, function (b) { b.disabled = grade.busy || !(grade.info && grade.info.names && grade.info.names.length); });
     var n = grade.info && grade.info.names ? grade.info.names.length : 0, d = gDirty();
     $('gapply').disabled = !n || !d || grade.busy;
-    $('gapply').textContent = d ? 'Apply ' + d + (d === 1 ? ' change' : ' changes') + ' to ' + plural(n) : 'Apply';
-    $('greset').disabled = !d;
+    $('gapply').textContent = d ? 'Apply ' + d + (d === 1 ? ' Color Shift change' : ' Color Shift changes') + ' to ' + plural(n) : 'Apply';
+    $('greset').disabled = !Object.keys(grade.edits.skin).length && !Object.keys(grade.edits.green).length;
   }
+  // Color Shift rows (Apply)
   ['skin', 'green'].forEach(function (part) {
     G_FIELDS.forEach(function (f) {
       var row = document.createElement('div'); row.className = 'prow';
@@ -419,6 +448,44 @@
       $(part === 'skin' ? 'gskin' : 'ggreen').appendChild(row);
     });
   });
+  // live rows: value shown is the first clip's; a step moves every clip in scope by the same amount
+  function liveRow(box, id, label, step, onStep) {
+    var row = document.createElement('div'); row.className = 'prow live';
+    row.innerHTML = '<span></span><span class="v"></span><button>−</button><button>+</button>';
+    row.children[0].textContent = label; row.children[1].id = id; row.children[1].textContent = '–';
+    [-1, 1].forEach(function (sign, k) {
+      var b = row.children[2 + k]; b.title = (sign > 0 ? '+' : '−') + step + ' on every clip in scope';
+      b.addEventListener('click', function () { onStep(sign * step); });
+    });
+    $(box).appendChild(row);
+  }
+  var liveBusy = false;
+  async function lumNudge(deltas) {
+    if (liveBusy || grade.busy) return;
+    liveBusy = true;
+    var csv = LUM_ORDER.map(function (k) { return deltas[k] === undefined ? 'x' : deltas[k]; }).join(',');
+    var r = await jsx('lcNudge(' + q(grade.scope) + ',' + q(csv) + ')');
+    liveBusy = false;
+    if (r.error) { setStatus('gstatus', r.error, 'bad'); return null; }
+    grade.lum = r; gRender(); return r;
+  }
+  G_LUM.forEach(function (f) {
+    liveRow('glum', 'gl-' + f[0], f[1], f[2], function (d) {
+      var o = {}; o[f[0]] = d;
+      lumNudge(o).then(function (r) { if (r) setStatus('gstatus', f[1] + ' ' + sgn(d) + ' on ' + plural(r.graded) + '.'); });
+    });
+  });
+  G_KEY.forEach(function (f) {
+    liveRow('gkeyrows', 'gk-' + f[0], f[0], f[1], async function (d) {
+      if (liveBusy || grade.busy) return;
+      liveBusy = true;
+      var r = await jsx('lcKeySet(' + q(grade.scope) + ',' + q(f[0]) + ',' + d + ')');
+      liveBusy = false;
+      if (r.error) { setStatus('gstatus', r.error, 'bad'); return; }
+      grade.key = r; gRender(); setStatus('gstatus', f[0] + ' ' + sgn(d) + ' on ' + plural(r.keyed) + '.');
+    });
+  });
+
   // Read Color Shift from the project as last saved. Never saves: saving on every look made Premiere save over and over
   // (save -> panel regains focus -> refresh -> save ...). Cached by file time, so returning to the panel costs nothing.
   var cmCache = { file: '', mtime: 0, values: {} };
@@ -433,12 +500,16 @@
     if (grade.busy) return;
     var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
     grade.info = info.error ? null : info;
-    if (info.error) { $('gtarget').textContent = info.error; gRender(); return; }
+    if (info.error) { $('gtarget').textContent = info.error; grade.lum = null; grade.key = null; gRender(); return; }
+    grade.lum = await jsx('lcLumState(' + q(grade.scope) + ')');
+    grade.key = await jsx('lcKeyState(' + q(grade.scope) + ')');
+    if (grade.lum.error) grade.lum = null;
+    if (grade.key.error) grade.key = null;
     try { grade.values = readColorShift(info.projectPath); } catch (e) { grade.values = {}; }
     var names = info.names || [];
     grade.shown = names.length && grade.values[names[0]] ? grade.values[names[0]] : { skin: { hue: 0, sat: 0, lum: 0 }, green: { hue: 0, sat: 0, lum: 0 } };
-    var t = !names.length ? (grade.scope === 'selected' ? 'Select clips in the timeline, then press Refresh.' : grade.scope === 'camera' ? 'Select one clip of the camera, then press Refresh.' : 'No enabled clips on V1.')
-      : plural(names.length) + (grade.scope === 'camera' && info.cameras.length ? ' from ' + info.cameras.join(', ') : '') + ' — ' + (names.length > 1 ? 'showing ' + names[0] : names[0]);
+    var t = !names.length ? (grade.scope === 'selected' ? 'Select clips in the timeline, then press Refresh.' : 'No enabled clips on V1.')
+      : plural(names.length) + (info.sequences > 1 ? ' in ' + info.sequences + ' sequences' : '') + ' — ' + (names.length > 1 ? 'showing ' + names[0] : names[0]);
     var without = names.filter(function (n) { return grade.values[n] && !grade.values[n].hasColorMode; }).length;
     if (without) t += ' · ' + without + ' without Color Mode yet (added on Apply)';
     $('gtarget').textContent = t;
@@ -446,10 +517,87 @@
   }
   Array.prototype.forEach.call($('gscope').children, function (b) {
     b.addEventListener('click', function () {
+      if (grade.busy) return;
       Array.prototype.forEach.call($('gscope').children, function (x) { x.className = x === b ? 'on' : ''; });
       grade.scope = b.getAttribute('data-v'); gradeRefresh();
     });
   });
+  // exposure presets: Lumetri correction now (live), Color Shift values filled for Apply
+  Array.prototype.forEach.call($('gpresets').children, function (b) {
+    b.addEventListener('click', async function () {
+      var p = PRESETS[b.getAttribute('data-v')]; if (!p || grade.busy) return;
+      var r = p.lum ? await lumNudge(p.lum) : null;
+      grade.edits.skin = JSON.parse(JSON.stringify(p.skin));
+      if (!keyedOn()) grade.edits.green = JSON.parse(JSON.stringify(p.green));
+      gRender();
+      setStatus('gstatus', p.label + ': ' + (r ? 'Lumetri corrected on ' + plural(r.graded) + ' (press again for more). ' : '') + 'Skin' + (keyedOn() ? '' : ' and green') + ' Color Shift filled — press Apply.', 'ok');
+    });
+  });
+
+  // ---- one-click green removal (Ultra Key, key colour sampled per clip) ----
+  var KEY_TMP = path.join(os.tmpdir(), 'uai_lumacut_key');
+  function sampleFrame(png) {
+    return new Promise(function (resolve) {
+      if (!state.ffmpeg) return resolve(null);
+      cp.execFile(state.ffmpeg, ['-v', 'error', '-i', png, '-vf', 'scale=64:36:flags=area', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+        { encoding: 'buffer', maxBuffer: 1 << 20 }, function (err, out) {
+          if (err || !out || out.length < 64 * 36 * 3) return resolve(null);
+          var px = [];
+          for (var y = 0; y < 22; y++) for (var x = 0; x < 64; x++) {
+            if (y > 3 && x > 4 && x < 59) continue;                    // top band + the two upper sides: the backdrop, not the person
+            var i = (y * 64 + x) * 3; px.push([out[i], out[i + 1], out[i + 2]]);
+          }
+          var green = px.filter(function (c) { return c[1] > 60 && c[1] > c[0] * 1.3 && c[1] > c[2] * 1.15; });
+          if (green.length < px.length * 0.6) return resolve({ green: false });
+          var med = [0, 1, 2].map(function (k) { var v = green.map(function (c) { return c[k]; }).sort(function (a, b) { return a - b; }); return v[v.length >> 1]; });
+          resolve({ green: true, color: med });
+        });
+    });
+  }
+  async function keyOn() {
+    var info = grade.info; if (!info) return;
+    var targets = await jsx('lcKeyTargets(' + q(grade.scope) + ')');
+    if (targets.error) { setStatus('gstatus', targets.error, 'bad'); return; }
+    var todo = targets.filter(function (t) { return !t.keyed; });
+    if (!todo.length) { setStatus('gstatus', 'Every clip in scope is already keyed.', 'ok'); return; }
+    if (!state.ffmpeg && grade.scope !== 'selected') { setStatus('gstatus', 'ffmpeg is needed to find the green-screen clips. Use Selected, or install it with install.sh.', 'warn'); return; }
+    var params = keyedOn() && grade.key.values ? G_KEY.map(function (f) { return grade.key.values[f[0]]; }).join(',') : '';
+    fs.mkdirSync(KEY_TMP, { recursive: true });
+    var keyed = 0, skipped = 0, failed = 0;
+    for (var i = 0; i < todo.length; i++) {
+      var t = todo[i]; setStatus('gstatus', 'Checking ' + (i + 1) + ' of ' + todo.length + ' — ' + t.name);
+      var color = KEY_DEFAULT;
+      if (state.ffmpeg) {
+        var base = path.join(KEY_TMP, 'k' + i);
+        var st = await evalJsx('lcStillIn(' + q(t.seqId) + ',' + q(t.ticks) + ',' + q(base) + ')');
+        var png = [base + '.png', base].filter(function (f) { return fs.existsSync(f); })[0];
+        var smp = /^OK/.test(st) && png ? await sampleFrame(png) : null;
+        try { if (png) fs.unlinkSync(png); } catch (e) {}
+        if (!smp) { failed++; continue; }
+        if (!smp.green) { skipped++; continue; }
+        color = smp.color;
+      }
+      var r = await evalJsx('lcKeyAdd(' + q(t.seqId) + ',' + t.index + ',' + color[0] + ',' + color[1] + ',' + color[2] + ',' + q(params) + ')');
+      if (r === 'OK') keyed++; else { failed++; log('key ' + t.name + ': ' + r); }
+    }
+    await evalJsx('lcOpenSeq(' + q(info.sequenceId) + ')');
+    await evalJsx('lcGoto(' + q(info.position) + ')');
+    setStatus('gstatus', 'Green removed on ' + plural(keyed) + (skipped ? ' · ' + skipped + ' not green-screen, left alone' : '') + (failed ? ' · ' + failed + ' could not be checked' : '') + '. Tune the key below; it updates live.', failed ? 'warn' : 'ok');
+  }
+  $('gkey').addEventListener('click', async function () {
+    if (grade.busy || liveBusy) return;
+    grade.busy = true; gRender();
+    try {
+      if (keyedOn()) {
+        var info = grade.info, r = await evalJsx('lcKeyRemove(' + q(grade.scope) + ')');
+        if (info) { await evalJsx('lcOpenSeq(' + q(info.sequenceId) + ')'); await evalJsx('lcGoto(' + q(info.position) + ')'); }
+        setStatus('gstatus', /^OK:/.test(r) ? 'Key removed from ' + plural(parseInt(r.slice(3), 10)) + '.' : 'Could not remove the key: ' + String(r).replace(/^ERR:/, ''), /^OK:/.test(r) ? 'ok' : 'bad');
+      } else await keyOn();
+    } catch (e) { setStatus('gstatus', 'Stopped: ' + e.message, 'bad'); }
+    grade.busy = false;
+    await gradeRefresh();
+  });
+
   $('greset').addEventListener('click', function () { grade.edits = { skin: {}, green: {} }; gRender(); setStatus('gstatus', ''); });
   $('gcopy').addEventListener('click', async function () {
     var info = await jsx('lcTargetNames("selected")');
@@ -457,7 +605,7 @@
     try { await evalJsx('lcSave()'); grade.values = readColorShift(info.projectPath); } catch (e) { setStatus('gstatus', 'Could not read the project: ' + e.message, 'bad'); return; }
     var v = grade.values[info.names[0]]; if (!v) { setStatus('gstatus', info.names[0] + ' has no S-Log grade.', 'warn'); return; }
     grade.edits = { skin: JSON.parse(JSON.stringify(v.skin)), green: JSON.parse(JSON.stringify(v.green)) };
-    $('gclip').textContent = 'Copied from ' + info.names[0] + '. Pick where it goes, then Apply.';
+    $('gclip').textContent = 'Copied Color Shift from ' + info.names[0] + '. Pick where it goes, then Apply.';
     gRender();
   });
   function backupProject(file) {
@@ -507,7 +655,7 @@
     if (info.error || !info.names.length) { setStatus('gstatus', info.error || 'No clips to apply to.', 'warn'); return; }
     if (!fs.existsSync(CM_TEMPLATE)) { setStatus('gstatus', 'Color Mode template is missing. Reinstall the panel.', 'bad'); return; }
     var edits = {};
-    info.names.forEach(function (n) { edits[n] = { skin: grade.edits.skin, green: grade.edits.green }; });
+    info.names.forEach(function (n) { edits[n] = { skin: grade.edits.skin, green: keyedOn() ? {} : grade.edits.green }; });
     var job = { file: info.projectPath, sequenceId: info.sequenceId, position: info.position, edits: edits, names: info.names, createdAt: new Date().toISOString() };
     grade.busy = true; gRender(); $('gapply').className = 'primary busy'; state.busy = true;
     var res;

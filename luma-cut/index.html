@@ -70,34 +70,49 @@
   </footer>
 </div>
 
-<!-- GRADE: Color Mode > Color Shift on skin and green screen -->
+<!-- GRADE: live Lumetri + key, Color Shift on skin and green screen (Apply) -->
 <div class="tab" id="tab-grade" hidden>
   <section>
     <div class="cap"><span>Apply to</span></div>
     <div class="seg" id="gscope">
       <button data-v="selected" class="on">Selected</button>
-      <button data-v="camera">Same camera</button>
-      <button data-v="all">All in sequence</button>
+      <button data-v="sequence">Current sequence</button>
+      <button data-v="all">All sequences</button>
     </div>
     <div id="gtarget" class="note"></div>
   </section>
   <section>
-    <div class="cap"><span class="swatch skin"></span><span>Skin tone</span><span class="end">Color Shift</span></div>
+    <div class="cap"><span>Exposure preset</span><span class="end">live + fills Color Shift</span></div>
+    <div class="presets" id="gpresets">
+      <button data-v="over" title="Exposure −0.5, Highlights −15, Whites −10 · skin Hue +3.5 Sat +3 Lum −3 · green Sat +5 Lum −10">Over-exposed</button>
+      <button data-v="normal" title="No Lumetri change · skin Hue +3.5 Sat +3 · green Sat +5">Normal</button>
+      <button data-v="under" title="Exposure +0.5, Shadows +15, Blacks +5 · skin Hue +3.5 Sat +3 Lum +3 · green Sat +5 Lum +10">Under-exposed</button>
+    </div>
+  </section>
+  <section>
+    <div class="cap"><span>Overall</span><span class="end live">live · Lumetri</span></div>
+    <div id="glum"></div>
+  </section>
+  <section>
+    <div class="cap"><span class="swatch skin"></span><span>Skin tone</span><span class="end">Color Shift · Apply</span></div>
     <div id="gskin"></div>
   </section>
   <section>
-    <div class="cap"><span class="swatch green"></span><span>Green screen</span><span class="end">Color Shift</span></div>
+    <div class="cap"><span class="swatch green"></span><span>Green screen</span>
+      <button id="gkey" class="switch end" title="Key out the green on every green-screen clip in scope (Ultra Key)"><i></i>Remove green</button></div>
     <div id="ggreen"></div>
+    <div id="gkeyrows" hidden></div>
+    <div id="gkeynote" class="note" hidden>Keyed areas are transparent and export as black unless something sits below on the timeline.</div>
   </section>
   <section>
     <div class="row">
       <button id="gcopy">Copy from selected clip</button>
       <button id="greset" class="ghost">Undo changes</button>
     </div>
-    <div id="gclip" class="note">Hue toward pink is +. Values are read from the last save; changed ones turn copper and only those are written. Apply saves, closes and reopens the project (about 10 s).</div>
+    <div id="gclip" class="note">Live rows change the clips at once (Cmd+Z undoes). Color Shift rows turn copper and are written by Apply. Hue toward pink is +.</div>
   </section>
   <footer>
-    <button id="gapply" class="primary" disabled title="Premiere saves, closes and reopens the project to write Color Shift (about 10 s). Undo history starts fresh.">Apply</button>
+    <button id="gapply" class="primary" disabled title="Premiere saves, parks and reopens the project to write Color Shift (a few seconds).">Apply</button>
     <div id="gstatus" class="status"></div>
   </footer>
 </div>
@@ -148,7 +163,7 @@
     <div class="cap"><span>Every client</span></div>
     <ol class="steps">
       <li><b>Build</b> — choose the client folder, <i>New project for this client</i>, pick Standalone or Claude, press the button.</li>
-      <li><b>Grade</b> — skin and green-screen Color Shift for a clip, a camera or the whole sequence.</li>
+      <li><b>Grade</b> — exposure preset and overall Lumetri (live), skin and green-screen Color Shift (Apply), one-click green removal (live).</li>
       <li><b>Review</b> — step through flags, fix cuts with a Rolling Edit, then <i>Check my changes → Confirm review ✓</i>.</li>
       <li><b>Export</b> — UAI Smart Export: 4K, H.264, under 2 GB per clip.</li>
     </ol>

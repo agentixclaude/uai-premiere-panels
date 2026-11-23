@@ -157,25 +157,36 @@ function lcAllGrades() {
         return out + '}';
     } catch (e) { return lcErr(e); }
 }
-// Names of the clips a Grade change goes to: selected / same camera as the selection / all enabled on V1
+// Grade targets: 'selected' (selection in the open sequence) / 'sequence' (open sequence) / 'all' (every sequence).
+// Returns [{ seq, index, clip }] for enabled clips on V1.
+function lcScope(scope) {
+    var p = app.project, act = p.activeSequence, out = [], i, j;
+    var take = function (s, onlySel) {
+        if (!s || s.videoTracks.numTracks < 1) { return; }
+        var t = s.videoTracks[0];
+        for (j = 0; j < t.clips.numItems; j++) {
+            var c = t.clips[j];
+            if (c.disabled) { continue; }
+            if (onlySel) { var sel = false; try { sel = c.isSelected(); } catch (e1) {} if (!sel) { continue; } }
+            out.push({ seq: s, index: j, clip: c });
+        }
+    };
+    if (scope === 'all') { for (i = 0; i < p.sequences.numSequences; i++) { take(p.sequences[i], false); } }
+    else { take(act, scope === 'selected'); }
+    return out;
+}
 function lcTargetNames(scope) {
     try {
         var s = app.project.activeSequence;
-        if (!s) { return '{"error":"Open one of the client sequences first."}'; }
-        var names = [], seen = {}, cams = {}, i, c;
-        var sel = s.getSelection();
-        for (i = 0; sel && i < sel.length; i++) { if (sel[i].mediaType === 'Video' && !sel[i].disabled) { cams[lcCamera(sel[i].name)] = true; } }
-        var t = s.videoTracks[0];
-        for (i = 0; t && i < t.clips.numItems; i++) {
-            c = t.clips[i];
-            if (c.disabled || seen[c.name]) { continue; }
-            var pick = scope === 'all' || (scope === 'camera' && cams[lcCamera(c.name)]);
-            if (scope === 'selected') { try { pick = c.isSelected(); } catch (e1) { pick = false; } }
-            if (pick) { names.push('"' + lcEsc(c.name) + '"'); seen[c.name] = true; }
+        if (!s && scope !== 'all') { return '{"error":"Open one of the client sequences first."}'; }
+        var t = lcScope(scope), names = [], seen = {}, seqs = {}, nseq = 0;
+        for (var i = 0; i < t.length; i++) {
+            if (!seqs[t[i].seq.sequenceID]) { seqs[t[i].seq.sequenceID] = 1; nseq++; }
+            if (seen[t[i].clip.name]) { continue; }
+            seen[t[i].clip.name] = true; names.push('"' + lcEsc(t[i].clip.name) + '"');
         }
-        var camList = ''; for (var k in cams) { camList += (camList ? ',' : '') + '"' + lcEsc(k) + '"'; }
-        return '{"sequence":"' + lcEsc(s.name) + '","sequenceId":"' + lcEsc(s.sequenceID) + '","position":"' + s.getPlayerPosition().ticks +
-            '","projectPath":"' + lcEsc(app.project.path) + '","cameras":[' + camList + '],"names":[' + names.join(',') + ']}';
+        return '{"sequence":"' + (s ? lcEsc(s.name) : '') + '","sequenceId":"' + (s ? lcEsc(s.sequenceID) : '') + '","position":"' + (s ? s.getPlayerPosition().ticks : '0') +
+            '","projectPath":"' + lcEsc(app.project.path) + '","sequences":' + nseq + ',"names":[' + names.join(',') + ']}';
     } catch (e) { return lcErr(e); }
 }
 // Save + close the project so its file can be edited (Color Mode is invisible to scripts).
@@ -294,3 +305,141 @@ function lcStill(ticks, outPath) {
         return 'OK:jpg';
     } catch (e) { return 'ERR:' + e.toString(); }
 }
+
+// ---------------- Live grade: Lumetri Basic, relative to each clip's own value ----------------
+var LC_LIMITS = { temperature: [-100, 100], tint: [-100, 100], saturation: [0, 200], exposure: [-5, 5], contrast: [-100, 100],
+    highlights: [-100, 100], shadows: [-100, 100], whites: [-100, 100], blacks: [-100, 100] };
+function lcLumState(scope) {
+    try {
+        var t = lcScope(scope), n = 0, first = null;
+        for (var i = 0; i < t.length; i++) { var v = lcValuesJson(t[i].clip); if (v) { n++; if (!first) { first = v; } } }
+        return '{"count":' + t.length + ',"graded":' + n + ',"values":' + (first || 'null') + '}';
+    } catch (e) { return lcErr(e); }
+}
+// csv in LC_KEYS order: a delta per slider, "x" = leave it
+function lcNudge(scope, csv) {
+    try {
+        var d = String(csv).split(','), t = lcScope(scope), n = 0;
+        for (var i = 0; i < t.length; i++) {
+            var l = lcLumetri(t[i].clip); if (!l) { continue; }
+            var b = lcBasic(l);
+            for (var k = 0; k < LC_KEYS.length; k++) {
+                if (d[k] === 'x' || d[k] === undefined || !b[LC_KEYS[k]]) { continue; }
+                var lim = LC_LIMITS[LC_KEYS[k]], v = lcRound(b[LC_KEYS[k]].getValue() + parseFloat(d[k]));
+                b[LC_KEYS[k]].setValue(Math.max(lim[0], Math.min(lim[1], v)), true);
+            }
+            n++;
+        }
+        return lcLumState(scope);
+    } catch (e) { return lcErr(e); }
+}
+
+// ---------------- Green screen removal: Ultra Key ----------------
+var LC_KEY_PARAMS = ['Tolerance', 'Pedestal', 'Choke', 'Soften', 'Spill'];
+function lcUltra(clip) {
+    for (var i = 0; i < clip.components.numItems; i++) { if (clip.components[i].matchName === 'AE.ADBE Ultra Key') { return clip.components[i]; } }
+    return null;
+}
+function lcProp(comp, name) {
+    for (var i = 0; i < comp.properties.numItems; i++) { if (comp.properties[i].displayName === name) { return comp.properties[i]; } }
+    return null;
+}
+function lcKeyState(scope) {
+    try {
+        var t = lcScope(scope), keyed = 0, first = null;
+        for (var i = 0; i < t.length; i++) {
+            var u = lcUltra(t[i].clip); if (!u) { continue; }
+            keyed++;
+            if (!first) {
+                first = '{';
+                for (var k = 0; k < LC_KEY_PARAMS.length; k++) { var pr = lcProp(u, LC_KEY_PARAMS[k]); first += (k ? ',' : '') + '"' + LC_KEY_PARAMS[k] + '":' + (pr ? lcRound(pr.getValue()) : 'null'); }
+                first += '}';
+            }
+        }
+        return '{"count":' + t.length + ',"keyed":' + keyed + ',"values":' + (first || 'null') + '}';
+    } catch (e) { return lcErr(e); }
+}
+// Clips in scope with a frame time to sample: [{seqId, index, name, ticks}]
+function lcKeyTargets(scope) {
+    try {
+        var t = lcScope(scope), out = [];
+        for (var i = 0; i < t.length; i++) {
+            var c = t[i].clip, mid = (Number(c.start.ticks) + Number(c.end.ticks)) / 2;
+            var at = Math.min(Number(c.start.ticks) + 254016000000 * 2, mid);       // 2 s in, or the middle of a short clip
+            out.push('{"seqId":"' + lcEsc(t[i].seq.sequenceID) + '","index":' + t[i].index + ',"name":"' + lcEsc(c.name) + '","ticks":"' + Math.round(at) + '","keyed":' + (lcUltra(c) ? 'true' : 'false') + '}');
+        }
+        return '[' + out.join(',') + ']';
+    } catch (e) { return lcErr(e); }
+}
+function lcSeqById(id) {
+    var p = app.project;
+    for (var i = 0; i < p.sequences.numSequences; i++) { if (p.sequences[i].sequenceID === id) { return p.sequences[i]; } }
+    return null;
+}
+// still of one sequence position (opens that sequence first)
+function lcStillIn(seqId, ticks, outPath) {
+    try {
+        var act = app.project.activeSequence;
+        if (!act || act.sequenceID !== seqId) { app.project.openSequence(seqId); }
+        return lcStill(ticks, outPath);
+    } catch (e) { return 'ERR:' + e.toString(); }
+}
+// the QE item for DOM clip index on V1 (QE also lists the empty gaps)
+function lcQeItem(seqId, index) {
+    var act = app.project.activeSequence;
+    if (!act || act.sequenceID !== seqId) { app.project.openSequence(seqId); }
+    app.enableQE();
+    var qt = qe.project.getActiveSequence().getVideoTrackAt(0), n = -1;
+    for (var i = 0; i < qt.numItems; i++) {
+        var it = qt.getItemAt(i);
+        if (it.type === 'Empty') { continue; }
+        n++;
+        if (n === index) { return it; }
+    }
+    return null;
+}
+function lcKeyAdd(seqId, index, r, g, b, paramsCsv) {
+    try {
+        var s = lcSeqById(seqId); if (!s) { return 'ERR:sequence not found'; }
+        var clip = s.videoTracks[0].clips[index];
+        if (!lcUltra(clip)) {
+            var it = lcQeItem(seqId, index); if (!it) { return 'ERR:clip not found'; }
+            it.addVideoEffect(qe.project.getVideoEffectByName('Ultra Key'));
+        }
+        var u = lcUltra(clip); if (!u) { return 'ERR:Ultra Key was not added'; }
+        var kc = lcProp(u, 'Key Color'); if (kc) { kc.setColorValue(255, r, g, b, true); }
+        var v = String(paramsCsv || '').split(',');
+        for (var k = 0; k < LC_KEY_PARAMS.length; k++) {
+            if (v[k] === undefined || v[k] === '' || v[k] === 'x') { continue; }
+            var pr = lcProp(u, LC_KEY_PARAMS[k]); if (pr) { pr.setValue(parseFloat(v[k]), true); }
+        }
+        return 'OK';
+    } catch (e) { return 'ERR:' + e.toString(); }
+}
+function lcKeyRemove(scope) {
+    try {
+        var t = lcScope(scope), n = 0, back = app.project.activeSequence ? app.project.activeSequence.sequenceID : '';
+        for (var i = 0; i < t.length; i++) {
+            if (!lcUltra(t[i].clip)) { continue; }
+            var it = lcQeItem(t[i].seq.sequenceID, t[i].index); if (!it) { continue; }
+            for (var j = it.numComponents - 1; j >= 0; j--) {
+                var c = it.getComponentAt(j);
+                if (c && c.name === 'Ultra Key') { c.remove(); n++; }
+            }
+        }
+        if (back) { app.project.openSequence(back); }
+        return 'OK:' + n;
+    } catch (e) { return 'ERR:' + e.toString(); }
+}
+function lcKeySet(scope, name, delta) {
+    try {
+        var t = lcScope(scope), n = 0;
+        for (var i = 0; i < t.length; i++) {
+            var u = lcUltra(t[i].clip); if (!u) { continue; }
+            var pr = lcProp(u, name); if (!pr) { continue; }
+            pr.setValue(Math.max(0, Math.min(100, lcRound(pr.getValue() + parseFloat(delta)))), true); n++;
+        }
+        return lcKeyState(scope);
+    } catch (e) { return lcErr(e); }
+}
+function lcOpenSeq(seqId) { try { if (seqId) { app.project.openSequence(seqId); } return 'OK'; } catch (e) { return 'ERR:' + e.toString(); } }
