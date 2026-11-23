@@ -7,7 +7,7 @@
    (x = colour position, y = shift (dial / 100), then 5 shape values) + 1 flag byte, then 8 trailing zero bytes.
    Skin points sit near x 0.02, the green-screen point near x 0.37. */
 'use strict';
-var fs = require('fs'), zlib = require('zlib');
+var fs = require('fs'), zlib = require('zlib'), crypto = require('crypto');
 
 var OBJ_RE = /\n\t<(\w+) (Object(?:U)?ID)="([^"]+)"([^>]*)>([\s\S]*?)\n\t<\/\1>/g;
 var REF_RE = /(Object(?:U)?Ref)="([^"]+)"/g;
@@ -94,7 +94,10 @@ function setBlob(text, buf) {
   var b64 = buf.toString('base64');
   var m = /<StartKeyframeValue Encoding="base64"( BinaryHash="([^"]*)")?\s*(\/>|>[^<]*<\/StartKeyframeValue>)/.exec(text);
   if (!m) throw new Error('Color Shift curve has no value field');
-  var hash = m[2] ? m[2].slice(0, -8) + hex : '';
+  // Premiere stores each binary once and lets other values point at it by hash, so a rewritten value must get a hash of
+  // its own (reusing one would make every value sharing it read this data). Last 8 hex digits: byte length + 12.
+  var r = crypto.randomBytes(10).toString('hex');
+  var hash = r.slice(0, 8) + '-' + r.slice(8, 12) + '-' + r.slice(12, 16) + '-' + r.slice(16, 20) + '-0000' + hex;
   var repl = '<StartKeyframeValue Encoding="base64"' + (hash ? ' BinaryHash="' + hash + '"' : '') + '>' + b64 + '\n\t\t</StartKeyframeValue>';
   return text.slice(0, m.index) + repl + text.slice(m.index + m[0].length);
 }
@@ -161,7 +164,10 @@ function applyEdits(ctx, edits, tpl) {
           newObjs[tplMap[o.id]] = { tag: o.tag, kind: o.kind, attrs: o.attrs, body: body };
         });
         var comps = components(objs, entry.chain);
-        var used = []; comps.forEach(function (c) { var mm = /<Component Version="\d+">\s*<Unique>[^<]*<\/Unique>\s*<ID>(\d+)<\/ID>/.exec(objs[c] ? objs[c].body : ''); if (mm) used.push(+mm[1]); });
+        // component IDs in this chain: Opacity and Motion (the chain's defaults) plus every effect's own <ID>
+        var used = [], cb = objs[entry.chain].body, dm;
+        var reD = /<Default\w+ComponentID>(\d+)</g; while ((dm = reD.exec(cb))) used.push(+dm[1]);
+        comps.forEach(function (c) { var mm = /<Component Version="\d+">[\s\S]*?<ID>(\d+)<\/ID>/.exec(objs[c] ? objs[c].body : ''); if (mm) used.push(+mm[1]); });
         var rootNew = newObjs[tplMap[tpl.root]];
         rootNew.body = rootNew.body.replace(/(<Component Version="\d+">\s*<Unique>[^<]*<\/Unique>\s*<ID>)\d+(<\/ID>)/, function (m0, a, b) { return a + (Math.max.apply(null, used.concat([0])) + 1) + b; });
         var chainText = text(entry.chain), chainBody = objs[entry.chain].body;
@@ -211,15 +217,49 @@ function applyEdits(ctx, edits, tpl) {
     var tail = s.lastIndexOf('\n</PremiereData>');
     if (tail < 0) throw new Error('unexpected project format');
     var add = appended.map(function (id) { var o = added[id]; return '\n\t<' + o.tag + ' ' + o.kind + '="' + id + '"' + o.attrs + '>' + o.body + '\n\t</' + o.tag + '>'; }).join('');
+    add = fillBinaries(s, add, tpl.binaries || {});
+    // like Premiere: a binary is stored once; later copies with the same hash point at it
+    var seen = {}, m0, reH = /BinaryHash="([^"]+)"\s*>\s*[^<\s]/g;
+    while ((m0 = reH.exec(s))) seen[m0[1]] = 1;
+    add = add.replace(/<(\w+) Encoding="base64" BinaryHash="([^"]+)">\s*([^<\s][^<]*)<\/\1>/g, function (m1, tag, h) {
+      if (seen[h]) return '<' + tag + ' Encoding="base64" BinaryHash="' + h + '"/>';
+      seen[h] = 1; return m1;
+    });
     s = s.slice(0, tail) + add + s.slice(tail);
   }
   return { text: s, report: report };
 }
+// Values the template points at by hash must exist somewhere in the target project with their data;
+// if this project has never held that binary, the first added copy carries it.
+function fillBinaries(project, add, binaries) {
+  Object.keys(binaries).forEach(function (h) {
+    var esc = h.replace(/[-]/g, '\\-');
+    if (new RegExp('BinaryHash="' + esc + '"\\s*>\\s*[^<\\s]').test(project + add)) return;
+    var re = new RegExp('<(\\w+) Encoding="base64" BinaryHash="' + esc + '"\\s*(?:\\/>|>\\s*<\\/\\1>)');
+    add = add.replace(re, function (m0, tag) { return '<' + tag + ' Encoding="base64" BinaryHash="' + h + '">' + binaries[h] + '\n\t\t</' + tag + '>'; });
+  });
+  return add;
+}
+function missingBinaries(text) {
+  var full = {}, empty = {}, m, re = /BinaryHash="([^"]+)"\s*(\/>|>([^<]*)<)/g;
+  while ((m = re.exec(text))) { if ((m[3] || '').trim()) full[m[1]] = 1; else empty[m[1]] = 1; }
+  return Object.keys(empty).filter(function (h) { return !full[h]; });
+}
 function applyAndSave(file, edits, tpl) {
   var ctx = load(file), res = applyEdits(ctx, edits, tpl);
+  var before = missingBinaries(ctx.s), gone = missingBinaries(res.text).filter(function (h) { return before.indexOf(h) < 0; });
+  if (gone.length) {                       // another clip pointed at a value we rewrote: give it the original data back
+    var orig = {}, m, re = /BinaryHash="([^"]+)"\s*>([^<]*)</g;
+    while ((m = re.exec(ctx.s))) if (m[2].trim() && !orig[m[1]]) orig[m[1]] = m[2].trim();
+    Object.keys(tpl.binaries || {}).forEach(function (h) { if (!orig[h]) orig[h] = tpl.binaries[h]; });
+    var fix = {}; gone.forEach(function (h) { if (orig[h]) fix[h] = orig[h]; });
+    res.text = fillBinaries('', res.text, fix);
+  }
+  var after = missingBinaries(res.text).filter(function (h) { return before.indexOf(h) < 0; });
+  if (after.length) throw new Error('the edit would leave ' + after.length + ' missing binaries; nothing written');
   fs.writeFileSync(file, zlib.gzipSync(Buffer.from(res.text, 'utf8')));
   return res.report;
 }
 
-module.exports = { load: load, bodyClips: bodyClips, readClip: readClip, readAll: readAll, applyEdits: applyEdits, applyAndSave: applyAndSave,
+module.exports = { missingBinaries: missingBinaries, load: load, bodyClips: bodyClips, readClip: readClip, readAll: readAll, applyEdits: applyEdits, applyAndSave: applyAndSave,
   decodeCurve: decodeCurve, encodeCurve: encodeCurve, blobOf: blobOf };

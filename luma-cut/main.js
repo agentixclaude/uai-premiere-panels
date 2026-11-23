@@ -478,7 +478,8 @@
     try {
       if (!job.written) {
         await wait(800);
-        backupProject(job.file);
+        job.backup = backupProject(job.file);
+        fs.writeFileSync(PENDING_FILE, JSON.stringify(job));
         setStatus('gstatus', 'Writing Color Shift…');
         var tpl = JSON.parse(fs.readFileSync(CM_TEMPLATE, 'utf8'));
         report = CM.applyAndSave(job.file, job.edits, tpl);
@@ -490,6 +491,13 @@
     setStatus('gstatus', 'Reopening…');
     var o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
     log('reopen: ' + o);
+    if (o !== 'OK' && job.written && job.backup && fs.existsSync(job.backup)) {
+      // Premiere refused the written file: put the backup back and open that, so the project is never left closed
+      fs.copyFileSync(job.backup, job.file);
+      o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
+      log('restored backup, reopen: ' + o);
+      if (!err) err = new Error('Premiere would not open the written project, so the backup was put back. Nothing changed.');
+    }
     if (o === 'OK') { try { fs.unlinkSync(PENDING_FILE); } catch (e) {} }
     return { report: report, err: err, reopened: o === 'OK' };
   }
