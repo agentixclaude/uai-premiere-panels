@@ -42,6 +42,8 @@ Every build makes:
 
 Building again replaces the `Sequences` bin (press twice to confirm). The XML it imports is kept as `Project File/<Client>_GRADED.xml`.
 
+**Skin (Custom) pass** — `engine/colormode/cm_clone.py` copies one clip's Color Mode adjustment (Color Shift on skin) to other clips in the saved project and sets each group's Hue / Lum Shift, the same as the Color tab's *Paste Grade → Paste and Replace*. Close the project in Premiere first. Example groups file: one entry per look (office/library, green screen, outdoor) with `from`, `to`, `hue`, `lum`. `cm_tool.py read` lists every clip's values.
+
 **Grade** — nudge the Best grade on selected clips or the whole sequence; copy one clip's grade to the selection or to every clip from the same camera. The **Custom** look stays a Color Mode adjustment (Color Shift) added by hand: Premiere's scripting cannot create or copy it.
 
 **Review** — every body clip with IN/OUT jump buttons, flagged clips highlighted. Move a cut with a Rolling Edit, then **Re-sync markers**. Saves IN/OUT stills to `QC Stills`.
@@ -61,5 +63,5 @@ Existing files are skipped unless *Replace existing files* is ticked.
 ## Repo layout
 - `panel/` — UAI Smart Export (`com.uai.smartexport`)
 - `luma-cut/` — UAI Luma Cut (`com.uai.lumacut`); `lib/` holds the XML builder, MP4 reader and audio trim
-- `engine/` — Claude-mode analysis (Python: `luma_plan.py`, `trim.py`, `face.py`, `grade_analyze.py`)
+- `engine/` — Claude-mode analysis (Python: `luma_plan.py`, `trim.py`, `face.py`, `grade_analyze.py`) and `colormode/` (Color Mode skin tools: `cm_clone.py`, `cm_tool.py`)
 - To publish an update: change the files, raise the version in the panel's `version.json` and `CSXS/manifest.xml`, push to `main`.
