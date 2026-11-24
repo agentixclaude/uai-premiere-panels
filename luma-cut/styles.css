@@ -64,3 +64,6 @@ section.grow { min-height: 130px; }
 .cap button.switch.on i { background: var(--green); }
 .cap button.switch.on i::after { transform: translateX(10px); background: #fff; }
 .cap button.switch.mixed i { background: rgba(79, 174, 109, .45); }
+.clip.pick { cursor: pointer; }
+.clip.pick:hover { background: var(--seg-hover); }
+.clip.picked { background: rgba(217, 134, 89, .14); box-shadow: inset 2px 0 0 #d98659; }

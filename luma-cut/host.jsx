@@ -443,3 +443,114 @@ function lcKeySet(scope, name, delta) {
     } catch (e) { return lcErr(e); }
 }
 function lcOpenSeq(seqId) { try { if (seqId) { app.project.openSequence(seqId); } return 'OK'; } catch (e) { return 'ERR:' + e.toString(); } }
+
+// ---------------- Scoped cut (Build: Current sequence / Selected clip) ----------------
+// Cuts in place on the timeline, so the grade already on a clip (Lumetri, Color Mode, key) stays.
+// A clip = the run of V1 items from one media file: one uncut item, or head | body | tail.
+var LC_TPS = 254016000000;
+function lcMediaPath(item) { try { return item.projectItem ? String(item.projectItem.getMediaPath()) : ''; } catch (e) { return ''; } }
+function lcGroup(track, mpath) {
+    var out = [];
+    for (var i = 0; i < track.clips.numItems; i++) {
+        var c = track.clips[i];
+        if (lcMediaPath(c) === mpath) { out.push(c); }
+    }
+    return out;
+}
+// Clips in scope: 'sequence' = every clip in the open sequence; 'selected' = clips with any piece selected
+// in the open sequence, plus clips named in namesCsv (ticked in the panel list) in any sequence.
+function lcCutTargets(scope, namesJson) {
+    try {
+        var p = app.project, act = p.activeSequence, want = {}, out = [], seen = {}, i, j, n = 0;
+        var names = []; try { names = eval('(' + namesJson + ')') || []; } catch (e0) {}
+        for (i = 0; i < names.length; i++) { want[names[i]] = true; n++; }
+        if (!act && !n) { return '{"error":"Open one of the client sequences first."}'; }
+        var scan = function (s, onlyNamed) {
+            if (!s || s.videoTracks.numTracks < 1) { return; }
+            var t = s.videoTracks[0];
+            for (j = 0; j < t.clips.numItems; j++) {
+                var c = t.clips[j], mp = lcMediaPath(c);
+                if (!mp) { continue; }
+                var key = s.sequenceID + '|' + mp, sel = false;
+                try { sel = c.isSelected(); } catch (e1) {}
+                var hit = onlyNamed ? !!want[c.name] : (scope === 'sequence' || sel || !!want[c.name]);
+                if (!hit || seen[key]) { continue; }
+                seen[key] = true;
+                out.push('{"seqId":"' + lcEsc(s.sequenceID) + '","sequence":"' + lcEsc(s.name) + '","name":"' + lcEsc(c.name) + '","path":"' + lcEsc(mp) + '","pieces":' + lcGroup(t, mp).length + '}');
+            }
+        };
+        scan(act, false);
+        if (n) { for (i = 0; i < p.sequences.numSequences; i++) { if (!act || p.sequences[i].sequenceID !== act.sequenceID) { scan(p.sequences[i], true); } } }
+        return '{"sequence":"' + (act ? lcEsc(act.name) : '') + '","clips":[' + out.join(',') + ']}';
+    } catch (e) { return lcErr(e); }
+}
+function lcTc(seq, ticks) {
+    var tb = Number(seq.timebase), f = Math.round(Number(ticks) / tb), fmt = 100;
+    try { fmt = seq.getSettings().videoDisplayFormat; } catch (e) {}
+    try { var fr = new Time(); fr.ticks = String(tb); var t = new Time(); t.ticks = String(f * tb); return t.getFormatted(fr, fmt); } catch (e2) {}
+    var nom = Math.round(LC_TPS / tb), pad = function (v) { return (v < 10 ? '0' : '') + v; };
+    return pad(Math.floor(f / (nom * 3600))) + ':' + pad(Math.floor(f / (nom * 60)) % 60) + ':' + pad(Math.floor(f / nom) % 60) + ':' + pad(f % nom);
+}
+function lcSetT(item, prop, ticks) { var t = new Time(); t.ticks = String(Math.round(ticks)); item[prop] = t; }
+// Move the cut between pieces a | b to newCut (timeline ticks); source points follow. The shrinking side goes first.
+function lcRoll(a, b, newCut) {
+    var old = Number(a.end.ticks), d = newCut - old;
+    if (!d) { return; }
+    if (newCut <= Number(a.start.ticks) || newCut >= Number(b.end.ticks)) { throw new Error('the new cut falls outside ' + a.name); }
+    var aOut = Number(a.outPoint.ticks) + d, bIn = Number(b.inPoint.ticks) + d;
+    if (d > 0) { lcSetT(b, 'start', newCut); b.inPoint = String(Math.round(bIn)); lcSetT(a, 'end', newCut); a.outPoint = String(Math.round(aOut)); }
+    else { lcSetT(a, 'end', newCut); a.outPoint = String(Math.round(aOut)); lcSetT(b, 'start', newCut); b.inPoint = String(Math.round(bIn)); }
+}
+// inSec / outSec: source seconds of the body (out exclusive). Works on V1 and A1.
+function lcCutApply(seqId, mpath, inSec, outSec, flag) {
+    try {
+        var s = lcSeqById(seqId);
+        if (!s) { return 'ERR:sequence not found'; }
+        if (!app.project.activeSequence || app.project.activeSequence.sequenceID !== seqId) { app.project.openSequence(seqId); }
+        s = app.project.activeSequence;
+        var tb = Number(s.timebase), snap = function (v) { return Math.round(v / tb) * tb; };
+        app.enableQE();
+        var qs = qe.project.getActiveSequence(), done = 0, body = null, tIn = 0, tOut = 0;
+        var tracks = [[s.videoTracks[0], function () { return qs.getVideoTrackAt(0); }], [s.audioTracks.numTracks ? s.audioTracks[0] : null, function () { return qs.getAudioTrackAt(0); }]];
+        for (var k = 0; k < tracks.length; k++) {
+            var tr = tracks[k][0];
+            if (!tr) { continue; }
+            var g = lcGroup(tr, mpath);
+            if (!g.length) { continue; }
+            var gStart = Number(g[0].start.ticks), gEnd = Number(g[g.length - 1].end.ticks), src0 = Number(g[0].inPoint.ticks);
+            tIn = snap(gStart + inSec * LC_TPS - src0); tOut = snap(gStart + outSec * LC_TPS - src0);
+            tIn = Math.max(gStart, Math.min(gEnd - tb, tIn)); tOut = Math.max(tIn + tb, Math.min(gEnd, tOut));
+            var want = [];
+            if (tIn > gStart) { want.push(tIn); }
+            if (tOut < gEnd) { want.push(tOut); }
+            if (g.length === 1) {
+                for (var w = 0; w < want.length; w++) {
+                    var before = lcGroup(tr, mpath).length;
+                    tracks[k][1]().razor(lcTc(s, want[w]));
+                    if (lcGroup(tr, mpath).length === before) { throw new Error('Premiere did not cut ' + g[0].name + ' (razor no-op)'); }
+                }
+            } else if (g.length - 1 === want.length) {
+                // head|body|tail (or head|body / body|tail): roll each cut; when the IN moves past the old OUT, roll the OUT first
+                if (want.length === 2 && want[0] >= Number(g[1].end.ticks)) { lcRoll(g[1], g[2], want[1]); lcRoll(g[0], g[1], want[0]); }
+                else { for (var r = 0; r < want.length; r++) { lcRoll(g[r], g[r + 1], want[r]); } }
+            } else {
+                throw new Error(g[0].name + ' is cut into ' + g.length + ' pieces on the timeline; use All sequences to rebuild it');
+            }
+            var pieces = lcGroup(tr, mpath);
+            for (var p2 = 0; p2 < pieces.length; p2++) {
+                var it = pieces[p2], on = Number(it.start.ticks) >= tIn - tb / 2 && Number(it.end.ticks) <= tOut + tb / 2;
+                it.disabled = !on;
+                if (on && k === 0) { body = it; }
+            }
+            done++;
+        }
+        if (!body) { return 'ERR:clip not found on V1 of ' + s.name; }
+        // IN / OUT markers for this clip
+        var ms = s.markers, m = ms.getFirstMarker(), dead = [], nm = String(body.name);
+        while (m) { if (m.name === 'IN ' + nm || m.name === 'OUT ' + nm) { dead.push(m); } m = ms.getNextMarker(m); }
+        for (var d = 0; d < dead.length; d++) { ms.deleteMarker(dead[d]); }
+        var mi = ms.createMarker(Number(body.start.ticks) / LC_TPS); mi.name = 'IN ' + nm; mi.comments = 'IN: mouth closed + eyes open';
+        var mo = ms.createMarker((Number(body.end.ticks) - tb) / LC_TPS); mo.name = 'OUT ' + nm; mo.comments = flag ? 'OUT REVIEW: ' + flag : 'OUT: mouth closed + eyes open';
+        return '{"ok":true,"tracks":' + done + ',"startTicks":"' + body.start.ticks + '","endTicks":"' + body.end.ticks + '","seconds":' + lcRound(body.end.seconds - body.start.seconds) + '}';
+    } catch (e) { return lcErr(e); }
+}

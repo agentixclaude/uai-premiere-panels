@@ -34,7 +34,8 @@
   function store(k, v) { try { if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v); } catch (e) {} }
   function load(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
 
-  var state = { info: null, client: null, clips: [], skipped: [], mode: load('lc:mode') || 'standalone', plan: null, request: null, busy: false, armed: 0, ffmpeg: SPEECH.findFfmpeg() };
+  var SAMPLES_FILE = path.join(HOME_DIR, 'grade_samples.jsonl');
+  var state = { bscope: load('lc:bscope') || 'all', picks: {}, info: null, client: null, clips: [], skipped: [], mode: load('lc:mode') || 'standalone', plan: null, request: null, busy: false, armed: 0, ffmpeg: SPEECH.findFfmpeg() };
 
   // ---------------- client folder ----------------
   function subdir(dir, re) {
@@ -70,7 +71,8 @@
     var names = fs.readdirSync(c.rawDir).filter(function (n) { return VIDEO_RE.test(n) && n.charAt(0) !== '.'; }).sort();
     names.forEach(function (n) {
       var p = path.join(c.rawDir, n);
-      if (/ \(\d+\)\.[^.]+$/.test(n)) { state.skipped.push({ file: n, why: 'duplicate copy' }); return; }
+      var orig = n.replace(/ \(\d+\)(\.[^.]+)$/, '$1');
+      if (orig !== n && names.indexOf(orig) >= 0) { state.skipped.push({ file: n, why: 'duplicate of ' + orig }); return; }
       try {
         var m = MP4.probe(p);
         state.clips.push({ file: n, path: p, rel: path.relative(c.dir, p), w: m.w, h: m.h, raw_w: m.raw_w, raw_h: m.raw_h, rot: m.rot, fps: m.fps, frames: m.frames, seconds: m.seconds });
@@ -147,7 +149,9 @@
       list.appendChild(h);
       g.forEach(function (c) {
         var p = usablePlan(c), row = document.createElement('div');
-        row.className = 'clip' + (p && p.flag ? ' flag' : '');
+        row.className = 'clip pick' + (p && p.flag ? ' flag' : '') + (state.picks[c.file] ? ' picked' : '');
+        row.title = 'Click to pick this clip for Selected clip';
+        row.addEventListener('click', function () { if (state.picks[c.file]) delete state.picks[c.file]; else state.picks[c.file] = true; renderClips(); renderTarget(); });
         row.innerHTML = '<span class="n"></span><span class="t"></span><span class="chip"></span>';
         row.children[0].textContent = c.file;
         row.children[0].title = p && p.flag ? p.flag : c.file;
@@ -183,8 +187,18 @@
       t.className = 'muted' + (inClient ? '' : ' tone-warn');
       np.hidden = inClient;
     }
+    Array.prototype.forEach.call($('bscope').children, function (x) { x.className = x.getAttribute('data-v') === state.bscope ? 'on' : ''; });
+    var npick = Object.keys(state.picks).length;
+    $('bscopenote').textContent = state.bscope === 'all' ? 'Re-cuts every clip and replaces the Sequences bin (grades start fresh).'
+      : state.bscope === 'sequence' ? 'Re-cuts every clip in the open sequence in place. Grades on the clips stay.'
+      : 'Re-cuts only the clips selected in the timeline' + (npick ? ' + ' + npick + ' picked in the list' : ' (or click rows in the list)') + '. Grades stay.';
     var b = $('build');
-    var ready = c && c.rawDir && state.clips.length && projectOk && !state.busy && (state.mode === 'standalone' || claudePlanReady());
+    var ready = c && c.rawDir && state.clips.length && projectOk && !state.busy && (state.mode === 'standalone' || claudePlanReady() || state.bscope !== 'all');
+    if (state.bscope !== 'all') {
+      b.className = 'primary'; b.disabled = !ready; state.armed = 0;
+      b.textContent = state.bscope === 'sequence' ? 'Analyse and cut current sequence' : 'Analyse and cut selected' + (npick ? ' (+' + npick + ')' : '');
+      return;
+    }
     b.disabled = !ready;
     if (state.armed && Date.now() - state.armed < 4000) { b.textContent = 'Click again to replace the Sequences bin'; b.className = 'primary armed'; return; }
     state.armed = 0; b.className = 'primary';
@@ -196,13 +210,13 @@
   function promptText() {
     var c = state.client;
     return 'Luma Cut: make the trim and grade plan for ' + c.name + '.\nRequest file: ' + c.requestFile +
-      '\nEngine: ' + ENGINE_DIR + '\nPast review corrections: ' + MEMORY_FILE + '\nWrite luma_plan.json next to the request file.';
+      '\nEngine: ' + ENGINE_DIR + '\nPast review corrections: ' + MEMORY_FILE + '\nGrade samples (match these looks): ' + SAMPLES_FILE + '\nWrite luma_plan.json next to the request file.';
   }
   function writeRequest() {
     var c = state.client;
     var req = {
       version: 1, requestId: crypto.randomBytes(6).toString('hex'), createdAt: new Date().toISOString(),
-      client: c.name, ac: c.ac, clientDir: c.dir, projRel: c.projRel, rawRel: c.rawRel, engine: ENGINE_DIR, memory: MEMORY_FILE,
+      client: c.name, ac: c.ac, clientDir: c.dir, projRel: c.projRel, rawRel: c.rawRel, engine: ENGINE_DIR, memory: MEMORY_FILE, samples: SAMPLES_FILE,
       rules: { preRoll: SPEECH.PRE, postRoll: SPEECH.POST, house: XB.HOUSE },
       clips: state.clips.map(function (x) { return { file: x.file, rel: x.rel, path: x.path, w: x.w, h: x.h, raw_w: x.raw_w, raw_h: x.raw_h, rot: x.rot, fps: x.fps, frames: x.frames }; })
     };
@@ -315,7 +329,75 @@
     setTimeout(function () { $('progress').hidden = true; }, 1200);
     await refresh();
   }
-  $('build').addEventListener('click', build);
+  $('build').addEventListener('click', function () { if (state.bscope === 'all') build(); else cutScoped(state.bscope); });
+  Array.prototype.forEach.call($('bscope').children, function (b) {
+    b.addEventListener('click', function () { if (state.busy) return; state.bscope = b.getAttribute('data-v'); store('lc:bscope', state.bscope); renderTarget(); setStatus('status', ''); });
+  });
+
+  // ---------------- scoped cut: current sequence / selected clips, in place on the timeline ----------------
+  function clipByPath(p) {
+    for (var i = 0; i < state.clips.length; i++) if (samePath(state.clips[i].path, p)) return state.clips[i];
+    return null;
+  }
+  // trim for one clip: Claude's plan when it is ready (Claude mode), otherwise the audio
+  async function trimFor(c) {
+    if (state.mode === 'claude') {
+      var p = claudePlanReady() ? planFor(c.file) : null;
+      if (!p) throw new Error('Claude\'s plan has no entry for ' + c.file + '. Ask Claude first, or switch to Standalone.');
+      return { inF: p['in'], outF: p.out, flag: p.flag, grade: p.grade };
+    }
+    var t = await analyseClip(c);
+    return { inF: t.inF, outF: t.outF, flag: t.flag };
+  }
+  function mergePlan(entries) {
+    var c = state.client, plan = readJson(c.planFile) || { version: 1, source: state.mode, client: c.name, clips: [] };
+    if (!Array.isArray(plan.clips)) plan.clips = [];
+    entries.forEach(function (e) {
+      var i = -1; plan.clips.forEach(function (x, k) { if (x.file === e.file) i = k; });
+      if (i >= 0) { var keep = plan.clips[i]; e.grade = e.grade || keep.grade; plan.clips[i] = e; } else plan.clips.push(e);
+    });
+    plan.updatedAt = new Date().toISOString();
+    fs.mkdirSync(c.projDir, { recursive: true });
+    fs.writeFileSync(c.planFile, JSON.stringify(plan, null, 1));
+    loadPlan();
+  }
+  async function cutScoped(scope) {
+    if (state.busy || !state.client) return;
+    var tg = await jsx('lcCutTargets(' + q(scope) + ',' + q(JSON.stringify(Object.keys(state.picks))) + ')');
+    if (tg.error) { setStatus('status', tg.error, 'warn'); return; }
+    var list = tg.clips || [];
+    var missing = Object.keys(state.picks).filter(function (f) { return !list.some(function (t) { return t.name === f; }); });
+    if (!list.length) { setStatus('status', scope === 'selected' ? 'Select the clip in the timeline (or click it in the list) first.' + (missing.length ? ' ' + missing.join(', ') + ' is not on any sequence yet.' : '') : 'The open sequence has no clips.', 'warn'); return; }
+    state.busy = true; renderTarget(); $('build').className = 'primary busy';
+    var done = [], failed = [], entries = [], flagged = 0;
+    try {
+      for (var i = 0; i < list.length; i++) {
+        var t = list[i], c = clipByPath(t.path);
+        progress(i, list.length, 'Cutting ' + (i + 1) + ' of ' + list.length + ' — ' + t.name);
+        if (!c) { try { var m = MP4.probe(t.path); c = { file: path.basename(t.path), path: t.path, w: m.w, h: m.h, rot: m.rot, fps: m.fps, frames: m.frames, seconds: m.seconds }; } catch (e0) { failed.push(t.name + ' (not readable)'); continue; } }
+        var fps = c.fps || 29.97;
+        try {
+          var tr = await trimFor(c);
+          var r = await jsx('lcCutApply(' + q(t.seqId) + ',' + q(t.path) + ',' + (tr.inF / fps) + ',' + ((tr.outF + 1) / fps) + ',' + q(tr.flag || '') + ')');
+          if (r.error) throw new Error(String(r.error).replace(/^ERR:/, ''));
+          if (tr.flag) flagged++;
+          done.push(t.name);
+          entries.push({ file: c.file, path: c.path, w: c.w, h: c.h, rot: c.rot, fps: c.fps, frames: c.frames, 'in': tr.inF, out: tr.outF, flag: tr.flag, grade: tr.grade });
+          log('cut ' + t.name + ' in ' + t.sequence + ': ' + tr.inF + '-' + tr.outF + (tr.flag ? ' flag ' + tr.flag : ''));
+        } catch (e) { failed.push(t.name + ': ' + e.message); log('cut failed ' + t.name + ': ' + e.message); }
+      }
+      if (entries.length) mergePlan(entries);
+      await evalJsx('lcSave()');
+      $('progress').firstChild.style.width = '100%';
+      var msg = 'Cut ' + plural(done.length) + (done.length <= 3 && done.length ? ' (' + done.join(', ') + ')' : '') + ' in place, grades kept' +
+        (flagged ? ' · ' + flagged + ' to check in Review' : '') + (failed.length ? ' · failed: ' + failed.join(' · ') : '') + '.';
+      setStatus('status', msg, failed.length ? 'bad' : flagged ? 'warn' : 'ok');
+      if (scope === 'selected') state.picks = {};
+    } catch (e) { setStatus('status', 'Stopped: ' + e.message, 'bad'); }
+    state.busy = false;
+    setTimeout(function () { $('progress').hidden = true; }, 1200);
+    await refresh();
+  }
   $('newproj').addEventListener('click', async function () {
     var c = state.client; if (!c || state.busy) return;
     fs.mkdirSync(c.projDir, { recursive: true });
@@ -786,6 +868,36 @@
       setStatus('rstatus', r.saved + ' images saved to Final Output / Stills' + (r.failed ? ' (' + r.failed + ' clips failed)' : '') + '.', r.failed ? 'warn' : 'ok');
     } catch (e) { setStatus('rstatus', 'Stopped: ' + e.message, 'bad'); }
     state.busy = false; $('rstills').disabled = false;
+  });
+  // Grade sample: the clip's finished grade (Lumetri + skin / green Color Shift) + an image, kept as a reference for future grading
+  $('rsample').addEventListener('click', async function () {
+    if (state.busy) return;
+    await reviewRefresh();
+    var d = review.data; if (!d) return;
+    var seen = {}, clips = d.clips.filter(function (c) { if (seen[c.name]) return false; seen[c.name] = true; return review.sscope === 'all' || (review.sscope === 'selected' ? c.selected : flagsFor(c.name).length); });
+    if (!clips.length) { setStatus('rstatus', review.sscope === 'selected' ? 'Select the graded clip in the timeline first.' : 'No matching clips.', 'warn'); return; }
+    state.busy = true; $('rsample').disabled = true;
+    try {
+      var info = await jsx('lcInfo()'); state.info = info;
+      var all = await snapshot(), frame = Number(d.timebase), dir = stillsDir(), n = 0;
+      fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(HOME_DIR, { recursive: true });
+      for (var i = 0; i < clips.length; i++) {
+        var c = clips[i], stem = stemOf(c.name) + '_SAMPLE';
+        setStatus('rstatus', 'Sampling ' + (i + 1) + ' of ' + clips.length + ' — ' + stemOf(c.name));
+        var mid = String(Math.round((Number(c.startTicks) + Number(c.endTicks)) / 2 / frame) * frame);
+        var st = await evalJsx('lcStill(' + q(mid) + ',' + q(path.join(dir, stem)) + ')');
+        var img = [stem + '.png', stem + '.jpg', stem].map(function (f) { return path.join(dir, f); }).filter(function (f) { return fs.existsSync(f); })[0] || '';
+        var g = all[c.name] || {}, cam = (stemOf(c.name).match(/^([A-Za-z]+\d*)/) || ['', ''])[1].toUpperCase();
+        var entry = { date: new Date().toISOString(), client: state.client ? state.client.name : path.basename(info.projectPath, '.prproj').replace(/_GRADED$/, ''),
+          ac: state.client ? state.client.ac : false, clip: c.name, camera: cam, sequence: d.sequence, lumetri: g.lumetri || null,
+          skin: g.skin || null, green: g.green || null, image: img, note: $('rnote').value.trim() || 'graded by hand, kept as a sample' };
+        fs.appendFileSync(SAMPLES_FILE, JSON.stringify(entry) + '\n');
+        if (/^OK/.test(st)) n++;
+        log('sample ' + c.name + ' -> ' + SAMPLES_FILE);
+      }
+      setStatus('rstatus', plural(clips.length) + ' kept as grade samples (' + n + ' images in Final Output / Stills). Claude reads them on the next client.', 'ok');
+    } catch (e) { setStatus('rstatus', 'Could not take the sample: ' + e.message, 'bad'); }
+    state.busy = false; $('rsample').disabled = false;
   });
   $('ropen').addEventListener('click', function () { var dir = stillsDir(); if (dir) cp.execFile('/usr/bin/open', [fs.existsSync(dir) ? dir : path.dirname(dir)]); });
 

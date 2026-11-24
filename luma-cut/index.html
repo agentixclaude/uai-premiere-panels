@@ -55,6 +55,16 @@
     </div>
   </section>
 
+  <section>
+    <div class="cap"><span>Cut</span></div>
+    <div class="seg" id="bscope">
+      <button data-v="all">All sequences</button>
+      <button data-v="sequence">Current sequence</button>
+      <button data-v="selected">Selected clip</button>
+    </div>
+    <div id="bscopenote" class="note"></div>
+  </section>
+
   <section class="grow">
     <div class="list" id="clips"><div class="empty">Choose a client folder to see its clips.</div></div>
   </section>
@@ -151,6 +161,7 @@
   <footer>
     <div class="actions">
       <button id="rstills" class="second">Save image</button>
+      <button id="rsample" class="second" title="Keep the clip's grade (Lumetri + Color Shift) and an image as a reference Claude matches on future clients">Save grade sample</button>
       <button id="rcheck" class="second">Check my changes</button>
     </div>
     <div id="rstatus" class="status"></div>
@@ -179,7 +190,9 @@
     <div class="cap"><span>Good to know</span></div>
     <ul class="facts">
       <li>Confirmed reviews are remembered (<span class="mono">~/UAI Luma Cut/grade_memory.jsonl</span>) and read by Claude on the next client.</li>
-      <li>Building again replaces the Sequences bin. The XML it imports stays in Project File.</li>
+      <li><b>Cut scope:</b> <i>All sequences</i> rebuilds the Sequences bin. <i>Current sequence</i> and <i>Selected clip</i> re-cut in place, so grades already on the clips stay.</li>
+      <li>A file named like <span class="mono">CAM2-4309 (1).MP4</span> is only skipped when the original is in the same folder.</li>
+      <li><i>Save grade sample</i> (Review) keeps a finished grade + image in <span class="mono">~/UAI Luma Cut/grade_samples.jsonl</span>; Claude matches it on later clients.</li>
       <li>S-log columns are set on the Project panel by themselves when a client project opens. Sorting is one click: Video Info header, arrow down.</li>
     </ul>
     <div class="row opts"><span id="ffmpegstate" class="chip"></span><span id="enginestate" class="chip"></span></div>
