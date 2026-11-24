@@ -483,3 +483,31 @@ function lcAllCuts() {
         return '{' + parts.join(',') + '}';
     } catch (e) { return lcErr(e); }
 }
+
+// ---------------- Grade: copy / paste ----------------
+// Copy: the first selected enabled V1 clip in the open sequence -> {"name", "lumetri":{...}}
+function lcCopySource() {
+    try {
+        var t = lcScope('selected');
+        if (!t.length) { return '{"error":"Select the graded clip in the timeline first."}'; }
+        var v = lcValuesJson(t[0].clip);
+        return '{"name":"' + lcEsc(t[0].clip.name) + '","lumetri":' + (v || 'null') + ',"projectPath":"' + lcEsc(app.project.path) + '"}';
+    } catch (e) { return lcErr(e); }
+}
+// Paste Lumetri: absolute Basic Correction values (csv in LC_KEYS order, 'x' = leave) on every selected clip except the source
+function lcPasteLum(csv, exclude) {
+    try {
+        var d = String(csv).split(','), t = lcScope('selected'), n = 0, missing = 0;
+        for (var i = 0; i < t.length; i++) {
+            if (t[i].clip.name === exclude) { continue; }
+            var l = lcLumetri(t[i].clip); if (!l) { missing++; continue; }
+            var b = lcBasic(l);
+            for (var k = 0; k < LC_KEYS.length; k++) {
+                if (d[k] === 'x' || d[k] === undefined || !b[LC_KEYS[k]]) { continue; }
+                b[LC_KEYS[k]].setValue(parseFloat(d[k]), true);
+            }
+            n++;
+        }
+        return '{"pasted":' + n + ',"noLumetri":' + missing + '}';
+    } catch (e) { return lcErr(e); }
+}

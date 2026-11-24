@@ -114,11 +114,16 @@
     <div id="gkeynote" class="note" hidden>Keyed areas are transparent and export as black unless something sits below on the timeline.</div>
   </section>
   <section>
-    <div class="row">
-      <button id="gcopy"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg>Copy from selected clip</button>
-      <button id="greset" class="ghost"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>Undo changes</button>
+    <div class="row"><button id="greset" class="ghost"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>Clear typed values</button></div>
+  </section>
+  <section>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg><span>Copy &amp; paste a look</span><span class="end">Overall + skin + green</span></div>
+    <div id="gclipboard" class="card clipboard empty"></div>
+    <div class="actions" style="margin-top:8px">
+      <button id="gcopy" class="second"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg>Copy from selected clip</button>
+      <button id="gpaste" class="second" disabled><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg>Paste to selected clips</button>
     </div>
-    <div id="gclip" class="note">Live rows change the clips at once (Cmd+Z undoes). Color Shift rows turn copper and are written by Apply. Hue toward pink is +.</div>
+    <div id="gclip" class="note">1. Select the graded clip, press Copy. 2. Select the clips that should look the same, press Paste. Overall changes at once; skin and green are written in a few seconds.</div>
   </section>
   <footer>
     <button id="gapply" class="primary" disabled title="Premiere saves, parks and reopens the project to write Color Shift (a few seconds).">Apply</button>
@@ -164,7 +169,7 @@
     <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span>Workflow</span></div>
     <ol class="steps">
       <li><b>Build</b> — choose the client folder, Standalone or Claude, build all sequences. Duplicates are checked by content first.</li>
-      <li><b>Grade</b> — exposure preset, live Lumetri, skin and green-screen Color Shift (Apply), Remove green.</li>
+      <li><b>Grade</b> — exposure preset, live Lumetri, skin and green-screen Color Shift (Apply), Remove green. <i>Copy</i> one clip's look, select other clips, <i>Paste</i>.</li>
       <li><b>Review</b> — fix flags, save grade references, then <i>Final check &amp; save learning</i>.</li>
       <li><b>Export</b> — UAI Smart Export.</li>
     </ol>

@@ -46,7 +46,7 @@ Build always makes all sequences together; building again replaces the `Sequence
 
 **Skin (Custom) pass** — `engine/colormode/cm_clone.py` copies one clip's Color Mode adjustment (Color Shift on skin) to other clips in the saved project and sets each group's Hue / Lum Shift, the same as the Color tab's *Paste Grade → Paste and Replace*. Close the project in Premiere first. Example groups file: one entry per look (office/library, green screen, outdoor) with `from`, `to`, `hue`, `lum`. `cm_tool.py read` lists every clip's values.
 
-**Grade** — scope Selected / Current sequence / All sequences; exposure presets, live Lumetri, skin and green-screen Color Shift (Apply), Remove green, copy, undo.
+**Grade** — scope Selected / Current sequence / All sequences; exposure presets, live Lumetri, skin and green-screen Color Shift (Apply), Remove green. **Copy / Paste a look**: select a graded clip → Copy (Overall + skin + green go on the clipboard), select other clips → Paste (Overall at once, Color Shift written only where it differs).
 
 **Review** — Flagged by system / All clips; a click on a clip selects that exact timeline item. Move a cut with a Rolling Edit, then **Re-sync markers**. **Save grade reference** keeps each listed clip's grade values plus one image (`Final Output/Stills/<clip>_REF.jpg`, 1920 px) and a 320 px copy for learning. **Final check & save learning**: first press compares the timeline with the build baseline (IN/OUT, Lumetri, skin and green Color Shift) and lists the changes; second press keeps them.
 

@@ -448,7 +448,7 @@
     normal: { label: 'Normal',        lum: null,                                             skin: { hue: 3.5, sat: 3, lum: 0 },  green: { sat: 5, lum: 0 } },
     under:  { label: 'Under-exposed', lum: { exposure: 0.5, shadows: 15, blacks: 5 },        skin: { hue: 3.5, sat: 3, lum: 3 },  green: { sat: 5, lum: 10 } }
   };
-  var grade = { scope: 'selected', info: null, values: {}, shown: null, edits: { skin: {}, green: {} }, busy: false, lum: null, key: null };
+  var grade = { clip: null, scope: 'selected', info: null, values: {}, shown: null, edits: { skin: {}, green: {} }, busy: false, lum: null, key: null };
   function plural(n) { return n + (n === 1 ? ' clip' : ' clips'); }
   function r2(v) { return Math.round(Number(v) * 100) / 100; }
   function sgn(v) { v = r2(v); return (v > 0 ? '+' : '') + v; }
@@ -555,6 +555,7 @@
   }
   async function gradeRefresh() {
     if (grade.busy) return;
+    renderClipboard();
     var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
     grade.info = info.error ? null : info;
     if (info.error) { $('gtarget').textContent = info.error; grade.lum = null; grade.key = null; gRender(); return; }
@@ -656,15 +657,61 @@
   });
 
   $('greset').addEventListener('click', function () { grade.edits = { skin: {}, green: {} }; gRender(); setStatus('gstatus', ''); });
+  // ---------------- Copy / Paste grade ----------------
+  // Copy keeps one clip's whole look (Overall Lumetri + skin and green Color Shift) on a clipboard.
+  // Paste puts it on the clips selected in the timeline (the source clip is skipped): Overall at once,
+  // Color Shift through the usual save / reopen write, only when it differs.
+  function csText(v) { return 'Hue ' + sgn(v.hue || 0) + ' · Sat ' + sgn(v.sat || 0) + ' · Lum ' + sgn(v.lum || 0); }
+  function renderClipboard() {
+    var c = grade.clip, box = $('gclipboard');
+    if (!c) { box.className = 'card clipboard empty'; box.innerHTML = '<b>Nothing copied yet.</b><span>Select a graded clip in the timeline, then press Copy.</span>'; }
+    else {
+      box.className = 'card clipboard';
+      box.innerHTML = '<b></b><span></span><span></span><span></span>';
+      box.children[0].textContent = 'Copied from ' + c.from;
+      var l = c.lumetri || {};
+      box.children[1].textContent = 'Overall · Exp ' + sgn(l.exposure || 0) + ' · Con ' + sgn(l.contrast || 0) + ' · Temp ' + sgn(l.temperature || 0) + ' · Tint ' + sgn(l.tint || 0) + ' · Sat ' + r2(l.saturation === undefined || l.saturation === null ? 100 : l.saturation);
+      box.children[2].textContent = 'Skin · ' + csText(c.skin);
+      box.children[3].textContent = 'Green · ' + csText(c.green);
+    }
+    $('gpaste').disabled = !c || grade.busy;
+    $('gcopy').disabled = grade.busy;
+  }
   $('gcopy').addEventListener('click', async function () {
-    var info = await jsx('lcTargetNames("selected")');
-    if (info.error || !info.names.length) { setStatus('gstatus', info.error || 'Select one clip in the timeline first.', 'warn'); return; }
-    try { await evalJsx('lcSave()'); grade.values = readColorShift(info.projectPath); } catch (e) { setStatus('gstatus', 'Could not read the project: ' + e.message, 'bad'); return; }
-    var v = grade.values[info.names[0]]; if (!v) { setStatus('gstatus', info.names[0] + ' has no S-Log grade.', 'warn'); return; }
-    grade.edits = { skin: JSON.parse(JSON.stringify(v.skin)), green: JSON.parse(JSON.stringify(v.green)) };
-    $('gclip').textContent = 'Copied Color Shift from ' + info.names[0] + '. Pick where it goes, then Apply.';
-    gRender();
+    if (grade.busy) return;
+    var src = await jsx('lcCopySource()');
+    if (src.error) { setStatus('gstatus', src.error, 'warn'); return; }
+    var cs;
+    try { await evalJsx('lcSave()'); grade.values = readColorShift(src.projectPath); cs = grade.values[src.name]; } catch (e) { setStatus('gstatus', 'Could not read the project: ' + e.message, 'bad'); return; }
+    if (!src.lumetri && !cs) { setStatus('gstatus', src.name + ' has no grade to copy.', 'warn'); return; }
+    grade.clip = { from: src.name, lumetri: src.lumetri, skin: cs ? cs.skin : { hue: 0, sat: 0, lum: 0 }, green: cs ? cs.green : { hue: 0, sat: 0, lum: 0 } };
+    renderClipboard();
+    setStatus('gstatus', 'Copied ' + src.name + '. Now select the clips that should look the same and press Paste.', 'ok');
   });
+  $('gpaste').addEventListener('click', async function () {
+    var c = grade.clip; if (!c || grade.busy) return;
+    var info = await jsx('lcTargetNames("selected")');
+    if (info.error) { setStatus('gstatus', info.error, 'warn'); return; }
+    var names = (info.names || []).filter(function (n) { return n !== c.from; });
+    if (!names.length) { setStatus('gstatus', 'Select the clips that should get the look (not ' + c.from + ') in the timeline, then press Paste.', 'warn'); return; }
+    // 1. Overall (live)
+    var lumMsg = '';
+    if (c.lumetri) {
+      var csv = LUM_ORDER.map(function (k) { return c.lumetri[k] === null || c.lumetri[k] === undefined ? 'x' : c.lumetri[k]; }).join(',');
+      var r = await jsx('lcPasteLum(' + q(csv) + ',' + q(c.from) + ')');
+      if (r.error) { setStatus('gstatus', 'Overall not pasted: ' + r.error, 'bad'); return; }
+      lumMsg = 'Overall pasted on ' + plural(r.pasted) + (r.noLumetri ? ' (' + r.noLumetri + ' without an S-Log grade skipped)' : '');
+    }
+    // 2. Color Shift (write), only for clips whose values differ
+    try { grade.values = readColorShift(info.projectPath); } catch (e) { grade.values = {}; }
+    var same = function (a, b) { return ['hue', 'sat', 'lum'].every(function (k) { return Math.abs((a && a[k] || 0) - (b && b[k] || 0)) < 0.01; }); };
+    var need = names.filter(function (n) { var v = grade.values[n]; return !v || !same(v.skin, c.skin) || !same(v.green, c.green); });
+    if (!need.length) { setStatus('gstatus', (lumMsg ? lumMsg + '. ' : '') + 'Color Shift already matches ' + c.from + '.', 'ok'); gradeRefresh(); return; }
+    setStatus('gstatus', (lumMsg ? lumMsg + '. ' : '') + 'Writing Color Shift to ' + plural(need.length) + '…');
+    var res = await writeColorShift(info, need, function () { return { skin: c.skin, green: c.green }; }, $('gpaste'));
+    if (res) setStatus('gstatus', 'Pasted the look of ' + c.from + ' on ' + plural(names.length) + (lumMsg ? '' : ' (Color Shift only)') + '.', 'ok');
+  });
+
   function backupProject(file) {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
     var stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
@@ -706,20 +753,19 @@
     if (o === 'OK') { try { fs.unlinkSync(PENDING_FILE); } catch (e) {} }
     return { report: report, err: err, reopened: o === 'OK' };
   }
-  $('gapply').addEventListener('click', async function () {
-    if (grade.busy || !gDirty()) return;
-    var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
-    if (info.error || !info.names.length) { setStatus('gstatus', info.error || 'No clips to apply to.', 'warn'); return; }
-    if (!fs.existsSync(CM_TEMPLATE)) { setStatus('gstatus', 'Color Mode template is missing. Reinstall the panel.', 'bad'); return; }
+  renderClipboard();
+  // Writes Color Shift for `names` (save -> park -> write -> reopen). editsFor(name) -> {skin, green}. Returns true when applied.
+  async function writeColorShift(info, names, editsFor, btn) {
+    if (!fs.existsSync(CM_TEMPLATE)) { setStatus('gstatus', 'Color Mode template is missing. Reinstall the panel.', 'bad'); return false; }
     var edits = {};
-    info.names.forEach(function (n) { edits[n] = { skin: grade.edits.skin, green: keyedOn() ? {} : grade.edits.green }; });
-    var job = { file: info.projectPath, sequenceId: info.sequenceId, position: info.position, edits: edits, names: info.names, createdAt: new Date().toISOString() };
-    grade.busy = true; gRender(); $('gapply').className = 'primary busy'; state.busy = true;
+    names.forEach(function (n) { edits[n] = editsFor(n); });
+    var job = { file: info.projectPath, sequenceId: info.sequenceId, position: info.position, edits: edits, names: names, createdAt: new Date().toISOString() };
+    grade.busy = true; gRender(); renderClipboard(); btn.className += ' busy'; state.busy = true;
     var res;
     try {
       fs.mkdirSync(HOME_DIR, { recursive: true });
       fs.writeFileSync(PENDING_FILE, JSON.stringify(job));
-      log('apply ' + JSON.stringify(grade.edits) + ' to ' + info.names.join(', ') + ' in ' + job.file);
+      log('apply ' + JSON.stringify(edits) + ' in ' + job.file);
       setStatus('gstatus', 'Saving and parking the project…');
       var c = await evalJsx('lcCloseForEdit(' + q(PARK_FILE) + ')');
       log('close: ' + c);
@@ -731,15 +777,24 @@
       var o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
       res = { err: e, reopened: o === 'OK', report: null };
     }
-    grade.busy = false; state.busy = false; $('gapply').className = 'primary';
+    grade.busy = false; state.busy = false; btn.className = btn.className.replace(/ busy/g, '');
+    var ok = false;
     if (res.err) setStatus('gstatus', 'Not applied: ' + res.err.message + (res.reopened ? '' : ' Reopen the project from File > Open Recent.'), 'bad');
     else if (!res.reopened) setStatus('gstatus', 'Written, but Premiere did not reopen the project. Open it from File > Open Recent.', 'warn');
-    else {
-      setStatus('gstatus', 'Applied to ' + plural(info.names.length) + '. Check the look; Review ✓ records it.', 'ok');
-      grade.edits = { skin: {}, green: {} };
-    }
-    await refresh(); gradeRefresh();
+    else ok = true;
+    renderClipboard();
+    await gradeRefresh();
+    return ok;
+  }
+  $('gapply').addEventListener('click', async function () {
+    if (grade.busy || !gDirty()) return;
+    var info = await jsx('lcTargetNames(' + q(grade.scope) + ')');
+    if (info.error || !info.names.length) { setStatus('gstatus', info.error || 'No clips to apply to.', 'warn'); return; }
+    var skin = grade.edits.skin, green = keyedOn() ? {} : grade.edits.green;
+    var ok = await writeColorShift(info, info.names, function () { return { skin: skin, green: green }; }, $('gapply'));
+    if (ok) { grade.edits = { skin: {}, green: {} }; gRender(); setStatus('gstatus', 'Applied to ' + plural(info.names.length) + '.', 'ok'); }
   });
+
   // finish an Apply that was cut off (panel unloaded while the project was closed)
   async function resumePendingApply() {
     var job = readJson(PENDING_FILE); if (!job || !job.file) return;
