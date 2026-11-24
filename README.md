@@ -63,6 +63,10 @@ Limits: Premiere's scripting cannot set the Lumetri LUT directly, so the grade c
 
 Existing files are skipped unless *Replace existing files* is ticked.
 
+## Both panels
+- **Undo / Redo** buttons in the header (Premiere's own history; Cmd+Z / Shift+Cmd+Z also work while the panel has focus).
+- **About → New updates**: each version with its date and time and what changed (before → now), from the panel's `changelog.json`. Add an entry there with every release.
+
 ## Repo layout
 - `panel/` — UAI Smart Export (`com.uai.smartexport`)
 - `luma-cut/` — UAI Luma Cut (`com.uai.lumacut`); `lib/` holds the XML builder, MP4 reader and audio trim

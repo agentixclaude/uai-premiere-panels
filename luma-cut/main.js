@@ -1057,4 +1057,47 @@
     lastFocus = t; refresh(); refreshTab();
   });
   refresh();
+  var AFTER_HISTORY = function () { refreshTab(); };
+
+  // ---------------- Undo / Redo (Premiere's own history) ----------------
+  // Cmd+Z inside a focused panel goes to the panel, not to Premiere, so the panel forwards it (buttons + keys).
+  var histTimer = 0;
+  async function history(dir) {
+    var r = await evalJsx('uaiHistory(' + JSON.stringify(dir) + ')'), el = $('hmsg');
+    var ok = /^OK:/.test(r), moved = ok ? r.slice(3) : '0';
+    el.textContent = !ok ? 'Undo not available' : moved === '0' ? 'Nothing to ' + dir : (dir === 'undo' ? 'Undone' : 'Redone');
+    el.className = 'hmsg' + (ok && moved !== '0' ? ' on' : '');
+    clearTimeout(histTimer); histTimer = setTimeout(function () { el.textContent = ''; el.className = 'hmsg'; }, 2200);
+    if (ok && moved !== '0' && typeof AFTER_HISTORY === 'function') AFTER_HISTORY();
+  }
+  $('hundo').addEventListener('click', function () { history('undo'); });
+  $('hredo').addEventListener('click', function () { history('redo'); });
+  document.addEventListener('keydown', function (ev) {
+    if (!(ev.metaKey || ev.ctrlKey) || String(ev.key).toLowerCase() !== 'z') return;
+    var t = ev.target && ev.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;     // text fields keep their own undo
+    ev.preventDefault();
+    history(ev.shiftKey ? 'redo' : 'undo');
+  });
+
+  // ---------------- About: New updates (changelog.json shipped with the panel) ----------------
+  (function renderUpdates() {
+    var box = $('updates'); if (!box) return;
+    var log; try { log = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'changelog.json'), 'utf8')); } catch (e) { box.textContent = 'No update history in this install.'; return; }
+    box.innerHTML = '';
+    (log.entries || []).forEach(function (e, i) {
+      var d = new Date(e.date), card = document.createElement('div');
+      card.className = 'upd' + (i === 0 ? ' latest' : '');
+      card.innerHTML = '<div class="uh"><b></b><span></span></div>';
+      card.querySelector('b').textContent = 'v' + e.version + (i === 0 ? ' · installed' : '');
+      card.querySelector('span').textContent = isNaN(d) ? e.date : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      (e.changes || []).forEach(function (c) {
+        var row = document.createElement('div'); row.className = 'uc';
+        row.innerHTML = '<span class="w"></span><span class="b"></span><span class="a">→</span><span class="n"></span>';
+        row.children[0].textContent = c.what; row.children[1].textContent = c.before; row.children[3].textContent = c.now;
+        card.appendChild(row);
+      });
+      box.appendChild(card);
+    });
+  })();
 })();

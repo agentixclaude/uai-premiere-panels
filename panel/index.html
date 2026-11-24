@@ -14,7 +14,7 @@
     <h1>UAI Smart Export</h1>
     <div class="sub"><span id="project">No project</span><span id="acchip" class="chip" hidden></span></div>
   </div>
-  <div class="hright"><span id="ver" class="ver"></span><button id="refresh" class="ghost" title="Re-read the timeline"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5m-4 8a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></svg>Refresh</button></div>
+  <div class="hright"><span id="hmsg" class="hmsg"></span><button id="hundo" class="ghost icon" title="Undo (Cmd+Z)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button><button id="hredo" class="ghost icon" title="Redo (Shift+Cmd+Z)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button><span id="ver" class="ver"></span><button id="refresh" class="ghost" title="Re-read the timeline"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5m-4 8a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></svg>Refresh</button></div>
 </header>
 
 <div id="update" class="update" hidden>
@@ -86,6 +86,10 @@
 
 <!-- ABOUT -->
 <div class="tab" id="tab-about" hidden>
+  <section>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>New updates</span><span class="end">what changed, before → now</span></div>
+    <div id="updates" class="updates"></div>
+  </section>
   <section>
     <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span>Workflow</span></div>
     <ol class="steps">

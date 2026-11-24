@@ -511,3 +511,16 @@ function lcPasteLum(csv, exclude) {
         return '{"pasted":' + n + ',"noLumetri":' + missing + '}';
     } catch (e) { return lcErr(e); }
 }
+
+// ---------------- Undo / Redo (Premiere's own history, via QE) ----------------
+// dir: 'undo' | 'redo'. Returns OK:<moved>; moved 0 = nothing to undo / redo.
+function uaiHistory(dir) {
+    try {
+        app.enableQE();
+        var p = qe.project, before = null, after = null;
+        try { before = Number(p.undoStackIndex()); } catch (e1) {}
+        if (dir === 'redo') { p.redo(); } else { p.undo(); }
+        try { after = Number(p.undoStackIndex()); } catch (e2) {}
+        return 'OK:' + (before === null || after === null ? '?' : Math.abs(after - before));
+    } catch (e) { return 'ERR:' + e.toString(); }
+}

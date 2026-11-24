@@ -1,1 +1,1 @@
-{"version": "1.8.0", "notes": "New look matching Luma Cut; Results tab verifies every file (exists, H.264, frame size, size cap); About tab"}
+{"version": "1.8.1", "notes": "Undo / Redo buttons (and Cmd+Z inside the panel); About shows New updates with date, time and before → now"}

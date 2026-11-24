@@ -1,0 +1,106 @@
+{
+ "panel": "UAI Luma Cut",
+ "entries": [
+  {
+   "version": "1.6.0",
+   "date": "2026-11-24T15:08",
+   "changes": [
+    {
+     "what": "About",
+     "before": "no update history",
+     "now": "New updates: every version with its date, time and what changed"
+    },
+    {
+     "what": "Undo / Redo",
+     "before": "Cmd+Z did nothing while the panel had focus",
+     "now": "Undo and Redo buttons in the header; Cmd+Z / Shift+Cmd+Z work inside the panel too (Premiere's own undo)"
+    }
+   ]
+  },
+  {
+   "version": "1.5.3",
+   "date": "2026-11-24T14:34",
+   "changes": [
+    {
+     "what": "Default skin + green Color Shift",
+     "before": "typed by hand, written with Apply",
+     "now": "written once at the end of Build (skin Hue +3.5 Sat +3, green Sat +5)"
+    }
+   ]
+  },
+  {
+   "version": "1.5.2",
+   "date": "2026-11-24T14:33",
+   "changes": [
+    {
+     "what": "Grade",
+     "before": "Skin / green rows + Apply saved, closed and reopened the project",
+     "now": "fully live: nothing closes, Cmd+Z works; per-clip skin / green in Premiere's Color tab"
+    },
+    {
+     "what": "Exposure presets",
+     "before": "Over / Normal / Under, also filled skin and green",
+     "now": "Over / Under, Lumetri only, live"
+    },
+    {
+     "what": "Copy / Paste a look",
+     "before": "copied Overall + skin + green (green / skin needed a reopen)",
+     "now": "copies Overall only, live"
+    }
+   ]
+  },
+  {
+   "version": "1.5.1",
+   "date": "2026-11-24T14:25",
+   "changes": [
+    {
+     "what": "Copy from selected clip",
+     "before": "filled the skin / green rows, Apply pasted to the scope",
+     "now": "clipboard card + Paste to selected clips button (source clip skipped)"
+    }
+   ]
+  },
+  {
+   "version": "1.5.0",
+   "date": "2026-11-24T11:15",
+   "changes": [
+    {
+     "what": "Look",
+     "before": "warm graphite + copper",
+     "now": "shared design with Smart Export: charcoal, #FA914F accent, icons"
+    },
+    {
+     "what": "Build",
+     "before": "All sequences / Current sequence / Selected clip",
+     "now": "all sequences only, one button"
+    },
+    {
+     "what": "Duplicates",
+     "before": "skipped by file name ' (1)'",
+     "now": "checked by content (hash, sound, pictures); different takes are kept"
+    },
+    {
+     "what": "Review",
+     "before": "Previous / Next flag, Check my changes + Confirm review, Save image + Save grade sample",
+     "now": "Flagged by system / All clips, click selects the clip, one Final check & save learning, one Save grade reference"
+    },
+    {
+     "what": "Learning",
+     "before": "grew without limit",
+     "now": "keeps the last 3 batches (About: 1 / 3 / 5), max 10 MB; rules need 2 batches"
+    }
+   ]
+  },
+  {
+   "version": "1.4.1",
+   "date": "2026-11-24T10:02",
+   "changes": [
+    {
+     "what": "Standalone OUT",
+     "before": "last word + 0.6 s, even into a breath",
+     "now": "stops 0.1 s before the next sound"
+    }
+   ]
+  }
+ ]
+}

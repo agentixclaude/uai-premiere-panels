@@ -1,0 +1,53 @@
+{
+ "panel": "UAI Smart Export",
+ "entries": [
+  {
+   "version": "1.8.1",
+   "date": "2026-11-24T15:08",
+   "changes": [
+    {
+     "what": "About",
+     "before": "no update history",
+     "now": "New updates: every version with its date, time and what changed"
+    },
+    {
+     "what": "Undo / Redo",
+     "before": "Cmd+Z did nothing while the panel had focus",
+     "now": "Undo and Redo buttons in the header; Cmd+Z / Shift+Cmd+Z work inside the panel too"
+    }
+   ]
+  },
+  {
+   "version": "1.8.0",
+   "date": "2026-11-24T11:15",
+   "changes": [
+    {
+     "what": "Look",
+     "before": "slate + lime",
+     "now": "same design as Luma Cut: charcoal, #FA914F accent, icons"
+    },
+    {
+     "what": "Tabs",
+     "before": "one export view",
+     "now": "Export, Results, About"
+    },
+    {
+     "what": "Check exported files",
+     "before": "size only",
+     "now": "Verify files: exists, H.264, frame size and size cap per file"
+    }
+   ]
+  },
+  {
+   "version": "1.7.1",
+   "date": "2026-11-23T17:15",
+   "changes": [
+    {
+     "what": "Update address",
+     "before": "uai-smart-export repo",
+     "now": "uai-premiere-panels repo"
+    }
+   ]
+  }
+ ]
+}
