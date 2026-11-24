@@ -359,11 +359,13 @@
       var cols = fs.readFileSync(path.join(EXT_DIR, 'columns', 's-log.xml'), 'utf8');
       await evalJsx('lcColumns(' + q(cols) + ')');
       await evalJsx('lcSave()');
+      progress(0.97, 1, 'Adding the default skin and green Color Shift…');
+      var csErr = await writeDefaultColorShift();
       try { await writeBaseline('build'); } catch (e2) {}
       $('progress').firstChild.style.width = '100%';
       var flagged = res.review.length;
       setStatus('status', 'Built ' + res.sequences.map(function (s) { return s.name; }).join(', ') + ' · ' + plan.clips.length + ' clips' +
-        (flagged ? ' · ' + flagged + ' to check in Review' : '') + '. To sort, click the Video Info header twice.', flagged ? 'warn' : 'ok');
+        (flagged ? ' · ' + flagged + ' to check in Review' : '') + (csErr ? ' · default Color Shift ' + csErr : ' · default skin + green Color Shift added') + '. To sort, click the Video Info header twice.', flagged || csErr ? 'warn' : 'ok');
     } catch (e) {
       setStatus('status', 'Stopped: ' + e.message, 'bad');
     }
@@ -651,6 +653,109 @@
   renderClipboard();
 
 
+
+  // ---------------- default Color Shift, written once right after Build ----------------
+  // Premiere's scripting can't set Color Shift live, so the house defaults (Normal preset: skin Hue +3.5 Sat +3,
+  // green Sat +5) are written into the saved project in the same step as the build (save -> park -> write -> reopen).
+  // Grading afterwards is all live; per-clip skin / green changes are made in Premiere's Color tab.
+  var csStatus = 'gstatus';
+  function backupProject(file) {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    var stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    var dest = path.join(BACKUP_DIR, path.basename(file, '.prproj') + '_' + stamp + '.prproj');
+    fs.copyFileSync(file, dest);
+    var all = fs.readdirSync(BACKUP_DIR).filter(function (n) { return n.indexOf(path.basename(file, '.prproj') + '_') === 0; }).sort();
+    while (all.length > 10) { try { fs.unlinkSync(path.join(BACKUP_DIR, all.shift())); } catch (e) {} }
+    return dest;
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // The job is written to disk before the project closes, so if Premiere ever unloads the panel mid-way,
+  // the panel finishes it (write + reopen) the next time it loads.
+  var PENDING_FILE = path.join(HOME_DIR, 'pending_apply.json');
+  async function finishApply(job) {
+    var report = null, err = null;
+    try {
+      if (!job.written) {
+        await wait(800);
+        job.backup = backupProject(job.file);
+        fs.writeFileSync(PENDING_FILE, JSON.stringify(job));
+        setStatus(csStatus, 'Writing Color Shift…');
+        var tpl = JSON.parse(fs.readFileSync(CM_TEMPLATE, 'utf8'));
+        report = CM.applyAndSave(job.file, job.edits, tpl);
+        log('written: ' + report.join(' | '));
+        job.written = true; job.report = report;
+        fs.writeFileSync(PENDING_FILE, JSON.stringify(job));
+      } else report = job.report || [];
+    } catch (e) { err = e; log('error: ' + (e.stack || e.message)); }
+    setStatus(csStatus, 'Reopening…');
+    var o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
+    log('reopen: ' + o);
+    if (o !== 'OK' && job.written && job.backup && fs.existsSync(job.backup)) {
+      // Premiere refused the written file: put the backup back and open that, so the project is never left closed
+      fs.copyFileSync(job.backup, job.file);
+      o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
+      log('restored backup, reopen: ' + o);
+      if (!err) err = new Error('Premiere would not open the written project, so the backup was put back. Nothing changed.');
+    }
+    if (o === 'OK') { try { fs.unlinkSync(PENDING_FILE); } catch (e) {} }
+    return { report: report, err: err, reopened: o === 'OK' };
+  }
+  renderClipboard();
+  // Writes Color Shift for `names` (save -> park -> write -> reopen). editsFor(name) -> {skin, green}. Returns true when applied.
+  async function writeColorShift(info, names, editsFor, btn) {
+    btn = btn || { className: '' };
+    if (!fs.existsSync(CM_TEMPLATE)) { setStatus(csStatus, 'Color Mode template is missing. Reinstall the panel.', 'bad'); return false; }
+    var edits = {};
+    names.forEach(function (n) { edits[n] = editsFor(n); });
+    var job = { file: info.projectPath, sequenceId: info.sequenceId, position: info.position, edits: edits, names: names, createdAt: new Date().toISOString() };
+    grade.busy = true; gRender(); renderClipboard(); btn.className += ' busy'; state.busy = true;
+    var res;
+    try {
+      fs.mkdirSync(HOME_DIR, { recursive: true });
+      fs.writeFileSync(PENDING_FILE, JSON.stringify(job));
+      log('apply ' + JSON.stringify(edits) + ' in ' + job.file);
+      setStatus(csStatus, 'Saving and parking the project…');
+      var c = await evalJsx('lcCloseForEdit(' + q(PARK_FILE) + ')');
+      log('close: ' + c);
+      if (!/^OK/.test(c)) throw new Error(String(c).replace(/^ERR:/, ''));
+      res = await finishApply(job);
+    } catch (e) {
+      log('error: ' + e.message);
+      try { fs.unlinkSync(PENDING_FILE); } catch (e2) {}
+      var o = await evalJsx('lcReopen(' + q(job.file) + ',' + q(job.sequenceId) + ',' + q(job.position) + ',' + q(PARK_FILE) + ')');
+      res = { err: e, reopened: o === 'OK', report: null };
+    }
+    grade.busy = false; state.busy = false; btn.className = btn.className.replace(/ busy/g, '');
+    var ok = false;
+    if (res.err) setStatus(csStatus, 'Not applied: ' + res.err.message + (res.reopened ? '' : ' Reopen the project from File > Open Recent.'), 'bad');
+    else if (!res.reopened) setStatus(csStatus, 'Written, but Premiere did not reopen the project. Open it from File > Open Recent.', 'warn');
+    else ok = true;
+    renderClipboard();
+    if (activeTab === 'grade') await gradeRefresh();
+    return ok;
+  }
+  // finish an Apply that was cut off (panel unloaded while the project was closed)
+  async function resumePendingApply() {
+    var job = readJson(PENDING_FILE); if (!job || !job.file) return;
+    if (Date.now() - new Date(job.createdAt).getTime() > 30 * 60 * 1000) { try { fs.unlinkSync(PENDING_FILE); } catch (e) {} return; }
+    var open = await evalJsx('lcOpenIndex(' + q(job.file) + ')');
+    if (Number(open) >= 0) { log('pending job dropped: project is open again'); try { fs.unlinkSync(PENDING_FILE); } catch (e) {} return; }
+    log('resuming pending apply');
+    grade.busy = true; state.busy = true;
+    var res = await finishApply(job);
+    grade.busy = false; state.busy = false;
+    setStatus('status', res.err ? 'An interrupted Grade Apply could not be finished: ' + res.err.message : 'Finished the interrupted Grade Apply on ' + plural(job.names.length) + '.', res.err ? 'bad' : 'ok');
+  }
+  async function writeDefaultColorShift() {
+    var info = await jsx('lcTargetNames("all")');
+    if (info.error || !info.names || !info.names.length) return 'no clips';
+    var d = PRESETS.normal;
+    csStatus = 'status';
+    try {
+      var ok = await writeColorShift(info, info.names, function () { return { skin: d.skin, green: d.green }; }, $('build'));
+      return ok ? '' : 'not written';
+    } finally { csStatus = 'gstatus'; }
+  }
 
   // ---------------- review ----------------
   // List: Flagged by system (REVIEW markers) or All clips; a row click selects that exact timeline clip (by its node id).
@@ -944,6 +1049,7 @@
   checkUpdate();
   var last = load('lc:client');
   if (last && fs.existsSync(last)) openClient(last); else renderClient();
+  resumePendingApply();
   var lastFocus = 0;     // one re-read per return to the panel; never while building, applying or saving images
   window.addEventListener('focus', function () {
     var t = Date.now();

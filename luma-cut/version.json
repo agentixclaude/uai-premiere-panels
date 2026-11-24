@@ -1,1 +1,1 @@
-{"version": "1.5.2", "notes": "Grade is fully live now: no more save, close and reopen. Skin / green Color Shift rows and Apply removed (use Premiere's Color tab Copy/Paste Grade); Copy / Paste a look copies Overall, Cmd+Z undoes"}
+{"version": "1.5.3", "notes": "Grade is fully live: no save, close or reopen while grading. The default skin + green Color Shift is written once at the end of Build. Per-clip skin / green changes: Premiere's Color tab. Copy / Paste a look copies Overall, Cmd+Z undoes"}
