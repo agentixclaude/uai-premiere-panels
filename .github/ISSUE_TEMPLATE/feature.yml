@@ -1,0 +1,26 @@
+name: Request a feature
+description: An idea for a panel, a tool or a faster way to do something.
+title: "[Idea] "
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: panel
+    attributes:
+      label: For which tool?
+      options: [UAI Luma Cut, UAI Smart Export, Premiere MCP (Claude), A new panel]
+    validations: { required: true }
+  - type: textarea
+    id: job
+    attributes:
+      label: What are you trying to get done?
+      description: The editing job, not the button. e.g. "add the same adjustment layer over every B-roll section".
+    validations: { required: true }
+  - type: textarea
+    id: now
+    attributes:
+      label: How do you do it today, and how long does it take?
+  - type: textarea
+    id: ref
+    attributes:
+      label: Reference
+      description: A plugin, video or screenshot that shows the idea.

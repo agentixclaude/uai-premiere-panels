@@ -1,0 +1,42 @@
+name: Report a problem
+description: A panel did something wrong, showed an error or did nothing.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: dropdown
+    id: panel
+    attributes:
+      label: Which tool?
+      options: [UAI Luma Cut, UAI Smart Export, Premiere MCP (Claude), Not sure]
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the panel's header, e.g. v1.6.0. For the MCP run `premiere-pro-mcp --version`.
+      placeholder: v1.6.0
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you pressed, what you expected, what you got. Copy the exact message from the status line if there was one.
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to repeat it
+      placeholder: |
+        1. Opened AC#__ project
+        2. Grade tab › Selected
+        3. Pressed …
+  - type: textarea
+    id: shots
+    attributes:
+      label: Screenshot or screen recording
+      description: Drag images or a short video here. Please crop out client faces where you can.
+  - type: input
+    id: premiere
+    attributes:
+      label: Premiere Pro version
+      placeholder: "2027 (27.0)"

@@ -1,20 +1,38 @@
-<p align="center"><img src="docs/banner.svg" alt="UAI Premiere Panels" width="100%"></p>
+<p align="center"><img src=".github/assets/banner.jpg" alt="UAI Premiere panels for the edit team" width="100%"></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Luma%20Cut-1.6.0-fa914f?style=flat-square" alt="Luma Cut 1.6.0">
   <img src="https://img.shields.io/badge/Smart%20Export-1.8.1-fa914f?style=flat-square" alt="Smart Export 1.8.1">
+  <img src="https://img.shields.io/badge/Arena%20Hub-0.6.1-4f8cff?style=flat-square" alt="Arena Hub 0.6.1">
+  <img src="https://img.shields.io/badge/Premiere%20MCP-1.31.0-3a3a3f?style=flat-square" alt="Premiere MCP 1.31.0">
   <img src="https://img.shields.io/badge/Premiere%20Pro-2020%2B-1c1c1e?style=flat-square" alt="Premiere Pro 2020+">
   <img src="https://img.shields.io/badge/macOS-only-1c1c1e?style=flat-square" alt="macOS">
 </p>
 
-Two panels for S-Log clone-client footage. They share one look and one installer.
+<p align="center">
+  Premiere Pro tools for the <b>UGENTIC × Soaring Media</b> edit team · macOS · Premiere Pro 2020+ (built and tested on 2027)
+</p>
 
-<table>
-<tr>
-<td width="50%" valign="top"><img src="docs/luma-cut-build.jpg" alt="UAI Luma Cut"><br><b>UAI Luma Cut</b> — reads the raw clips, trims the start/end pause, applies the S-Log grade, builds the timelines.</td>
-<td width="50%" valign="top"><img src="docs/smart-export.jpg" alt="UAI Smart Export"><br><b>UAI Smart Export</b> — exports every clip as its own 4K H.264 file under 2 GB, named after the clip, into Final Output.</td>
-</tr>
-</table>
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#whats-new">What's new</a> ·
+  <a href="#uai-luma-cut">Luma Cut</a> ·
+  <a href="#uai-smart-export">Smart Export</a> ·
+  <a href="#agentix-arena-hub">Arena Hub</a> ·
+  <a href="#mcp-for-adobe-premiere-pro">Premiere MCP</a> ·
+  <a href="../../issues/new/choose">Report a problem</a>
+</p>
+
+---
+
+## The toolkit
+
+| Tool | What it does | Where |
+|---|---|---|
+| **UAI Luma Cut** | Sets up an S-Log client: trims each clip's pauses, applies the house grade, builds the 8K / 4K, horizontal / vertical timelines, live grading and review. | this repo |
+| **UAI Smart Export** | Exports every clip as its own 4K H.264 file under 2 GB, named after the clip, straight into Final Output, then verifies each file. | this repo |
+| **Agentix Arena Hub** | Drop any file or link, offline auto captions you can edit, CapCut-style effects, smart adjustment layers and mattes. | [agentix-arena-hub](https://github.com/agentixclaude/agentix-arena-hub) |
+| **Premiere MCP** | Lets Claude read and drive Premiere (timelines, clips, effects, exports). Team-tested version, one installer. | [`mcp/`](mcp/) |
 
 ## What's new
 **Luma Cut 1.6.0** · 2026-11-24 15:08
@@ -27,83 +45,93 @@ Two panels for S-Log clone-client footage. They share one look and one installer
 
 Full history: About → New updates in each panel.
 
-## Install
-Open **Terminal**, paste this line, press Return:
+Arena Hub: see its [What's new](https://github.com/agentixclaude/agentix-arena-hub#whats-new).
 
-```
+## Install
+
+Quit Premiere Pro, open **Terminal**, paste a line, press Return.
+
+**Luma Cut + Smart Export**
+```bash
 curl -fsSL https://raw.githubusercontent.com/agentixclaude/uai-premiere-panels/main/install.sh | bash
 ```
+Only one of them: add `-s lumacut` or `-s export` after `bash`.
 
-Restart Premiere Pro, then open **Window → Extensions → UAI Luma Cut** and **UAI Smart Export**.
-Only one panel: add `-s export` or `-s lumacut` after `bash`.
+**Arena Hub**
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentixclaude/agentix-arena-hub/main/install.sh | bash
+```
 
-Needs Premiere Pro 2020 or newer (built and tested on 2027), Adobe Media Encoder, a Mac. Luma Cut's Standalone trim needs ffmpeg (the installer adds it when Homebrew is present).
+**Premiere MCP (for Claude)**
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentixclaude/uai-premiere-panels/main/mcp/install-mcp.sh | bash
+```
 
-## Updates
-Each panel checks GitHub when it opens. When a new version is out, press **Update now** in the panel and restart Premiere.
+Then open Premiere › **Window › Extensions** and pick the panel. Every panel updates itself: when a new version is out it shows **Update now**, then restart Premiere.
+
+Needs a Mac, Premiere Pro 2020 or newer, Adobe Media Encoder (for Smart Export). ffmpeg is added automatically when Homebrew is installed.
 
 ---
 
 ## UAI Luma Cut
 
-1. **Choose folder…** — the client folder holding `Raw Data` (any folder starting with "Raw") and `Project File`. Folders named like `AC#3 …` are marked **AC client**.
-2. **New project for this client** — creates or opens `Project File/<Client>_GRADED.prproj` (e.g. `AC3_ScottFeirn_GRADED`).
-3. Pick the mode, then press the big button.
+<table><tr>
+<td width="34%" valign="top"><img src=".github/assets/luma-cut-grade.jpg" alt="UAI Luma Cut, Grade tab" width="100%"></td>
+<td valign="top">
 
-**Standalone** (no Claude): trims from the audio, about 0.8 s before the first word and 0.6 s after the last word, and applies the house grade. Seconds per client.
+**Client setup in one press.** Choose the client folder (the one holding *Raw Data* and *Project File*), pick **Standalone** or **Claude**, press **Analyse and build**.
 
-**Claude**: press **Ask Claude**. The panel writes `luma_request.json` and copies a prompt; paste it into the Claude desktop app on the same Mac. Claude runs the engine (`~/UAI Luma Cut/engine`): IN/OUT on a frame with the mouth closed and the eyes open, and a grade matched per clip (skin brightness and colour, highlights). When `luma_plan.json` appears, the panel shows **Plan ready**; press **Build from Claude's plan**.
+- **Build**: trims from the audio, applies the S-Log grade, makes `<Client>_8K_HZ / 8K_VER / 4K_HZ / 4K_VER` with IN/OUT markers; content-based duplicate check.
+- **Grade**: all live, ⌘Z undoes. Over / under-exposure presets, Overall Lumetri, one-click green-screen removal, copy & paste a look. Scope: selected, sequence or all.
+- **Review**: flagged clips, re-sync markers, save grade references, final check that feeds the learning.
+- **About**: what changed in each version.
 
-Every build makes:
-- a `Sequences` bin with one sequence per size and orientation: `<Client>_8K_HZ`, `_8K_VER`, `_4K_HZ`, `_4K_VER`;
-- each clip cut head | body | tail, with head and tail left on the timeline, disabled; IN/OUT markers on every body (flagged clips get a red OUT marker);
-- one **S-Log Lumetri** per body clip (ALEXA LogC2Rec709 LUT + grade); vertical clips rotated;
-- the S-log Project-panel columns, then a save.
+[Full Luma Cut guide →](docs/luma-cut.md)
 
-Build always makes all sequences together; building again replaces the `Sequences` bin (press twice to confirm).
-
-**Duplicate check** (Build, also runs before every build): decided by content, never by file name. Same size + sampled hash + full SHA-1 = identical copy, skipped. Same shape and length + matching sound at 5 time-aligned points + matching keyframes = same recording in another file, kept and flagged. Everything else is a different take (`CAM2-4309 (1).MP4` included). Results are cached per file (path, size, modified time) in `~/UAI Luma Cut/dupe_cache.json`. The XML it imports is kept as `Project File/<Client>_GRADED.xml`.
-
-**Skin (Custom) pass** — `engine/colormode/cm_clone.py` copies one clip's Color Mode adjustment (Color Shift on skin) to other clips in the saved project and sets each group's Hue / Lum Shift, the same as the Color tab's *Paste Grade → Paste and Replace*. Close the project in Premiere first. Example groups file: one entry per look (office/library, green screen, outdoor) with `from`, `to`, `hue`, `lum`. `cm_tool.py read` lists every clip's values.
-
-**Grade** (all live, Cmd+Z undoes; the panel never saves, closes or reopens the project) — scope Selected / Current sequence / All sequences; Over / Under exposure presets; Overall Lumetri sliders; Remove green (Ultra Key); **Copy / Paste a look**: select a graded clip → Copy, select other clips → Paste (Overall). The default skin + green Color Shift (skin Hue +3.5 Sat +3, green Sat +5) is written once at the end of Build, in the same save and reopen as the build; per-clip skin / green changes are made and copied in Premiere's Color tab (Copy Grade / Paste Grade), because Premiere's scripting can't change Color Shift live.
-
-**Review** — Flagged by system / All clips; a click on a clip selects that exact timeline item. Move a cut with a Rolling Edit, then **Re-sync markers**. **Save grade reference** keeps each listed clip's grade values plus one image (`Final Output/Stills/<clip>_REF.jpg`, 1920 px) and a 320 px copy for learning. **Final check & save learning**: first press compares the timeline with the build baseline (IN/OUT, Lumetri, skin and green Color Shift) and lists the changes; second press keeps them.
-
-**Learning** (`~/UAI Luma Cut/learning`): one batch per client project; only the last 3 batches are kept by default (About: latest only / 3 / 5), capped at 10 MB including images; older batches are erased after a new one is saved. Rules (bounded mean corrections) only switch on after the same correction appears in 2 batches; Standalone applies the Lumetri and trim rules, Claude reads `claude_context.json`. Reset learning (About) keeps a backup file.
-
-Limits: Premiere's scripting cannot set the Lumetri LUT directly, so the grade comes in through the imported XML. Project-panel sorting is a manual click (Video Info header, arrow down).
+</td></tr></table>
 
 ## UAI Smart Export
 
-- **Export all** queues each enabled clip on V1 as its own file, cut straight from the sequence, so grade and trim changes are always what exports.
-- File name = clip name (`CAM1-3918.mp4`); folder = the client's **Final Output** (or **Browse…**).
-- Every file is 4K in its sequence's orientation (3840×2160 or 2160×3840), H.264, Rec.709, AAC 320 kbps, and under the size cap (2 GB default); bitrate = min(200, 15200 ÷ seconds − 0.32) Mbps.
-- **Verify files** (Results tab) reads every output: exists, H.264, the expected frame size (ffprobe) and under the cap; only files that pass every check show *verified*.
+<table><tr>
+<td width="34%" valign="top"><img src=".github/assets/smart-export.jpg" alt="UAI Smart Export" width="100%"></td>
+<td valign="top">
 
-Existing files are skipped unless *Replace existing files* is ticked.
+**Every clip out as its own file.** File name = clip name, folder = the client's **Final Output**.
 
-## Both panels
-- **Undo / Redo** buttons in the header (Premiere's own history; Cmd+Z / Shift+Cmd+Z also work while the panel has focus).
-- **About → New updates**: each version with its date and time and what changed (before → now), from the panel's `changelog.json`. Add an entry there with every release.
+- 4K in the sequence's orientation (3840×2160 or 2160×3840), H.264, Rec.709, AAC 320 kbps.
+- Always under the size cap (2 GB by default); bitrate worked out per clip.
+- Export all / active sequence / selected clips; existing files skipped unless *Replace existing*.
+- **Verify files** checks codec, frame size and size of every output.
 
-## Repo layout
-- `panel/` — UAI Smart Export (`com.uai.smartexport`)
-- `luma-cut/` — UAI Luma Cut (`com.uai.lumacut`); `lib/` holds the XML builder, MP4 reader and audio trim
-- `engine/` — Claude-mode analysis (Python: `luma_plan.py`, `trim.py`, `face.py`, `grade_analyze.py`) and `colormode/` (Color Mode skin tools: `cm_clone.py`, `cm_tool.py`)
-- `mcp/` — team installer for the open-source MCP for Adobe Premiere Pro (`install-mcp.sh`, pinned `VERSION`)
-- To publish an update: change the files, raise the version in the panel's `version.json` and `CSXS/manifest.xml`, push to `main`.
+[Full Smart Export guide →](docs/smart-export.md)
 
-## MCP for Adobe Premiere Pro (for Claude)
+</td></tr></table>
 
-Separate from the panels: lets Claude read and drive Premiere. One line installs the team-tested version:
+## Agentix Arena Hub
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentixclaude/uai-premiere-panels/main/mcp/install-mcp.sh | bash
-```
+<table><tr>
+<td width="34%" valign="top"><img src=".github/assets/arena-hub.jpg" alt="Agentix Arena Hub, Text tab with Auto captions" width="100%"></td>
+<td valign="top">
 
-Details, rules and troubleshooting: [`mcp/README.md`](mcp/README.md).
+**The creative panel.** Lives in its own repo with its own guide: **[agentixclaude/agentix-arena-hub](https://github.com/agentixclaude/agentix-arena-hub)**.
 
-## Adding a panel
-Each panel is one folder at the top of this repo (`panel/`, `luma-cut/`, …) with its own `CSXS/manifest.xml` (a unique id such as `com.uai.<name>`), its own `version.json` and a copy of `ui.css` with its own theme in `styles.css`. Add an install block for it in `install.sh` and the panel's self-update looks for `<folder>/version.json` on `main`.
-Keep the repo small: every update downloads the whole repo as one zip. No footage, LUTs, exports or model weights in here; panels find those on the Mac.
+- **Drop**: images, video, audio, folders, Drive / Dropbox links, YouTube, Instagram, TikTok… into `Assets/Drops`, converted so Premiere always plays them.
+- **Text**: **Auto captions** transcribed on your Mac, offline; unsure words flagged to check, brand-word spelling fixes, placed as editable Graphics text or a caption track.
+- **Effects**: 31 CapCut-style effects on Premiere 2027's new effects, with previews.
+- **Tools**: adjustment layers and mattes over a section, never overwriting.
+
+</td></tr></table>
+
+## MCP for Adobe Premiere Pro
+
+Lets Claude (Desktop or Code) work inside Premiere. It is the open-source [premiere-pro-mcp](https://github.com/leancoderkavy/premiere-pro-mcp) (MIT) at the version the team has tested; the installer sets up the server, its Premiere connector and Claude Desktop in one go. First prompt after installing: **"verify my Premiere connection"**. Rules and troubleshooting: [`mcp/README.md`](mcp/README.md).
+
+---
+
+## Help
+
+- Something broke or looks wrong → **[Report a problem](../../issues/new/choose)** (pick the panel, add the version from its header and a screenshot).
+- Idea for a tool → same page, **Request a feature**.
+- Maintainers: [how updates, versions and new panels work](docs/maintainers.md).
+
+<sub>Internal tools for the UGENTIC × Soaring Media team. The repo is public: never commit client footage, exports, project files, keys or passwords.</sub>
