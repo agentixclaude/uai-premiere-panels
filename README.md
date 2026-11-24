@@ -1,11 +1,31 @@
-# UAI panels for Premiere Pro (macOS)
+<p align="center"><img src="docs/banner.svg" alt="UAI Premiere Panels" width="100%"></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Luma%20Cut-1.6.0-fa914f?style=flat-square" alt="Luma Cut 1.6.0">
+  <img src="https://img.shields.io/badge/Smart%20Export-1.8.1-fa914f?style=flat-square" alt="Smart Export 1.8.1">
+  <img src="https://img.shields.io/badge/Premiere%20Pro-2020%2B-1c1c1e?style=flat-square" alt="Premiere Pro 2020+">
+  <img src="https://img.shields.io/badge/macOS-only-1c1c1e?style=flat-square" alt="macOS">
+</p>
 
 Two panels for S-Log clone-client footage. They share one look and one installer.
 
-| Panel | Job |
-|---|---|
-| **UAI Luma Cut** | Sets up a client: reads the raw clips, trims the start/end pause, applies the S-Log grade, builds the timelines. |
-| **UAI Smart Export** | Exports every clip as its own 4K H.264 file under 2 GB, named after the clip, into Final Output. |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/luma-cut-build.jpg" alt="UAI Luma Cut"><br><b>UAI Luma Cut</b> — reads the raw clips, trims the start/end pause, applies the S-Log grade, builds the timelines.</td>
+<td width="50%" valign="top"><img src="docs/smart-export.jpg" alt="UAI Smart Export"><br><b>UAI Smart Export</b> — exports every clip as its own 4K H.264 file under 2 GB, named after the clip, into Final Output.</td>
+</tr>
+</table>
+
+## What's new
+**Luma Cut 1.6.0** · 2026-11-24 15:08
+- **About** — New updates: every version with its date, time and what changed
+- **Undo / Redo** — Undo and Redo buttons in the header; Cmd+Z / Shift+Cmd+Z work inside the panel too (Premiere's own undo)
+
+**Smart Export 1.8.1** · 2026-11-24 15:08
+- **About** — New updates: every version with its date, time and what changed
+- **Undo / Redo** — Undo and Redo buttons in the header; Cmd+Z / Shift+Cmd+Z work inside the panel too
+
+Full history: About → New updates in each panel.
 
 ## Install
 Open **Terminal**, paste this line, press Return:
