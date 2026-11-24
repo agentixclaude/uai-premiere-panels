@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.uai.lumacut" ExtensionBundleVersion="1.4.0" ExtensionBundleName="UAI Luma Cut">
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.uai.lumacut" ExtensionBundleVersion="1.4.1" ExtensionBundleName="UAI Luma Cut">
   <ExtensionList>
-    <Extension Id="com.uai.lumacut.panel" Version="1.4.0"/>
+    <Extension Id="com.uai.lumacut.panel" Version="1.4.1"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>

@@ -28,7 +28,18 @@ function boundsFromDb(db) {
     if (j >= k - 1 && run >= need) { var s = j - k + 1; if (first < 0) first = s; last = s; }
   }
   if (first < 0) return null;
-  return { start: first * 0.02, end: (last + k) * 0.02, floorDb: floor, thrDb: thr };
+  // a / b: the real first / last voiced 20 ms frame, used to look for the next / previous sound.
+  // start / end keep the window rule the 0.8 s / 0.6 s rolls were measured against.
+  var a = first, b = Math.min(db.length - 1, last + k - 1);
+  while (a < b && !sp[a]) a++;
+  while (b > a && !sp[b]) b--;
+  // next sound after the speech (breath, lip smack, "mm", off-camera noise) and the last one before it:
+  // the pre/post roll must stop short of them so the cut lands on silence and a still mouth
+  var GAP = 3, nextOn = -1, prevOff = -1, r = 0;
+  for (var x = b + 1; x < db.length; x++) { r = sp[x] ? r + 1 : 0; if (r >= GAP) { nextOn = x - GAP + 1; break; } }
+  r = 0;
+  for (var y = a - 1; y >= 0; y--) { r = sp[y] ? r + 1 : 0; if (r >= GAP) { prevOff = y + GAP - 1; break; } }
+  return { start: first * 0.02, end: (last + k) * 0.02, nextSound: nextOn >= 0 ? nextOn * 0.02 : null, prevSound: prevOff >= 0 ? (prevOff + 1) * 0.02 : null, floorDb: floor, thrDb: thr };
 }
 // callback(err, {start, end} | null)
 function speechBounds(ffmpeg, file, cb) {
@@ -53,8 +64,12 @@ function speechBounds(ffmpeg, file, cb) {
 // frames in/out (out inclusive) for a clip, from speech bounds
 function trimFrames(bounds, fps, frames) {
   if (!bounds) return { inF: 0, outF: frames - 1, flag: 'no speech found - set IN/OUT by hand' };
-  var inF = Math.max(0, Math.round((bounds.start - PRE) * fps));
-  var outF = Math.min(frames - 1, Math.round((bounds.end + POST) * fps));
+  var inT = bounds.start - PRE, outT = bounds.end + POST;
+  // never roll into another sound: stop 0.1 s before it (keeping at least 0.1 s of air after / before the words)
+  if (bounds.nextSound !== null && bounds.nextSound !== undefined) outT = Math.min(outT, Math.max(bounds.end + 0.1, bounds.nextSound - 0.1));
+  if (bounds.prevSound !== null && bounds.prevSound !== undefined) inT = Math.max(inT, Math.min(bounds.start - 0.1, bounds.prevSound + 0.1));
+  var inF = Math.max(0, Math.round(inT * fps));
+  var outF = Math.min(frames - 1, Math.round(outT * fps));
   if (outF <= inF) return { inF: 0, outF: frames - 1, flag: 'speech too short - set IN/OUT by hand' };
   return { inF: inF, outF: outF, flag: '' };
 }

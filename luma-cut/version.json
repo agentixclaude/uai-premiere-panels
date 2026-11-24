@@ -1,1 +1,1 @@
-{"version": "1.4.0", "notes": "Build cut scope: All sequences / Current sequence / Selected clip (in-place, grades kept); (1) files no longer skipped unless the original exists; Save grade sample"}
+{"version": "1.4.1", "notes": "Standalone trim: IN/OUT never roll into a breath or other sound before / after the words (OUT stops 0.1 s before the next sound)"}
