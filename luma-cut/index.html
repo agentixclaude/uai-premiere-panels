@@ -91,11 +91,10 @@
     <div id="gtarget" class="note"></div>
   </section>
   <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Exposure preset</span><span class="end">live + fills Color Shift</span></div>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Exposure preset</span><span class="end">live</span></div>
     <div class="presets" id="gpresets">
-      <button data-v="over" title="Exposure −0.5, Highlights −15, Whites −10 · skin Hue +3.5 Sat +3 Lum −3 · green Sat +5 Lum −10">Over-exposed</button>
-      <button data-v="normal" title="No Lumetri change · skin Hue +3.5 Sat +3 · green Sat +5">Normal</button>
-      <button data-v="under" title="Exposure +0.5, Shadows +15, Blacks +5 · skin Hue +3.5 Sat +3 Lum +3 · green Sat +5 Lum +10">Under-exposed</button>
+      <button data-v="over" title="Exposure −0.5, Highlights −15, Whites −10">Over-exposed</button>
+      <button data-v="under" title="Exposure +0.5, Shadows +15, Blacks +5">Under-exposed</button>
     </div>
   </section>
   <section>
@@ -103,30 +102,21 @@
     <div id="glum"></div>
   </section>
   <section>
-    <div class="cap"><span class="swatch skin"></span><span>Skin tone</span><span class="end">Color Shift · Apply</span></div>
-    <div id="gskin"></div>
-  </section>
-  <section>
     <div class="cap"><span class="swatch green"></span><span>Green screen</span>
       <button id="gkey" class="switch end" title="Key out the green on every green-screen clip in scope (Ultra Key)"><i></i>Remove green</button></div>
-    <div id="ggreen"></div>
     <div id="gkeyrows" hidden></div>
     <div id="gkeynote" class="note" hidden>Keyed areas are transparent and export as black unless something sits below on the timeline.</div>
   </section>
   <section>
-    <div class="row"><button id="greset" class="ghost"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>Clear typed values</button></div>
-  </section>
-  <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg><span>Copy &amp; paste a look</span><span class="end">Overall + skin + green</span></div>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg><span>Copy &amp; paste a look</span><span class="end">Overall · live</span></div>
     <div id="gclipboard" class="card clipboard empty"></div>
     <div class="actions" style="margin-top:8px">
       <button id="gcopy" class="second"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg>Copy from selected clip</button>
       <button id="gpaste" class="second" disabled><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg>Paste to selected clips</button>
     </div>
-    <div id="gclip" class="note">1. Select the graded clip, press Copy. 2. Select the clips that should look the same, press Paste. Overall changes at once; skin and green are written in a few seconds.</div>
+    <div id="gclip" class="note">1. Select the graded clip, press Copy. 2. Select the clips that should look the same, press Paste. Changes at once, Cmd+Z undoes. Skin and green-screen Color Shift: Premiere's Color tab → Copy Grade / Paste Grade.</div>
   </section>
   <footer>
-    <button id="gapply" class="primary" disabled title="Premiere saves, parks and reopens the project to write Color Shift (a few seconds).">Apply</button>
     <div id="gstatus" class="status"></div>
   </footer>
 </div>
@@ -169,7 +159,7 @@
     <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span>Workflow</span></div>
     <ol class="steps">
       <li><b>Build</b> — choose the client folder, Standalone or Claude, build all sequences. Duplicates are checked by content first.</li>
-      <li><b>Grade</b> — exposure preset, live Lumetri, skin and green-screen Color Shift (Apply), Remove green. <i>Copy</i> one clip's look, select other clips, <i>Paste</i>.</li>
+      <li><b>Grade</b> — exposure preset, live Lumetri, Remove green. <i>Copy</i> one clip's Overall, select other clips, <i>Paste</i>. Everything is live; skin and green Color Shift stay in Premiere's Color tab.</li>
       <li><b>Review</b> — fix flags, save grade references, then <i>Final check &amp; save learning</i>.</li>
       <li><b>Export</b> — UAI Smart Export.</li>
     </ol>

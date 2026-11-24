@@ -1,1 +1,1 @@
-{"version": "1.5.1", "notes": "Grade: Copy / Paste a look — Copy from the selected clip, select other clips, Paste (Overall + skin + green). New look, all-sequences Build with duplicate check by content, Review Final check & save learning"}
+{"version": "1.5.2", "notes": "Grade is fully live now: no more save, close and reopen. Skin / green Color Shift rows and Apply removed (use Premiere's Color tab Copy/Paste Grade); Copy / Paste a look copies Overall, Cmd+Z undoes"}
