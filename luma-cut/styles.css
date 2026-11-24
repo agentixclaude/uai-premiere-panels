@@ -1,10 +1,11 @@
 /* UAI Luma Cut — panel-only styles (shared system in ui.css) */
-.claude { margin-top: 8px; padding: 9px; border: 1px solid var(--line-soft); border-radius: var(--r); background: #1c1b1a; display: flex; flex-direction: column; gap: 8px; }
+.claude { margin-top: 8px; padding: 10px; border: 1px solid var(--line-soft); border-radius: var(--r); background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
 .prompt { padding: 7px 9px; background: var(--bg-sunk); border: 1px solid var(--line-soft); border-radius: 4px; color: var(--text);
   font: 11px/1.5 "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; -webkit-user-select: text; }
 .mono { font: 11px "SF Mono", Menlo, monospace; color: var(--text-2); }
 
-.clip { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 5px 9px; border-top: 1px solid var(--row-line); }
+.clip { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 10px; border-top: 1px solid var(--row-line); }
+.clip:nth-child(odd) { background: var(--row-alt); }
 .list .head + .clip { border-top: 0; }
 .clip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .clip .t { color: var(--text-3); font-size: 11px; }
@@ -12,13 +13,16 @@
 .clip.flag .n { color: var(--warn); }
 .clip .chip { min-width: 54px; justify-content: center; }
 
-.rclip { padding: 6px 9px; border-top: 1px solid var(--row-line); }
+.rclip { padding: 8px 10px; border-top: 1px solid var(--row-line); }
+.rclip .n.link { color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; }
+.rclip.flag .n.link { color: var(--warn); }
+.rclip .n.link:hover { color: var(--accent); }
 .list .head + .rclip { border-top: 0; }
 .rclip .top { display: flex; justify-content: space-between; gap: 8px; }
 .rclip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rclip.flag .n { color: var(--warn); }
 .rclip .marks { display: flex; gap: 6px; margin-top: 4px; }
-.rclip .marks button { height: 21px; padding: 0 8px; font-size: 11px; color: var(--text-2); border-radius: 11px; }
+.rclip .marks button { height: 23px; padding: 0 9px; font-size: 11px; color: var(--text-2); border-radius: 12px; }
 .rclip .why { margin-top: 4px; color: var(--warn); font-size: 11px; }
 
 /* grade */
@@ -34,10 +38,6 @@
 .changes .c .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .changes .c .d { grid-column: 1 / -1; color: var(--text-2); font-size: 11px; }
 .changes .c .d b { color: var(--accent); font-weight: 650; }
-#rnote { margin-top: 8px; width: 100%; }
-#rconfirmrow { margin-top: 8px; justify-content: space-between; }
-button.confirm { background: rgba(124, 196, 154, .14); border-color: rgba(124, 196, 154, .5); color: var(--ok); font-weight: 700; }
-button.confirm:hover:not(:disabled) { background: rgba(124, 196, 154, .22); border-color: var(--ok); }
 
 /* about */
 .steps, .facts { margin: 0; padding-left: 18px; color: var(--text-2); }
@@ -49,7 +49,7 @@ button.confirm:hover:not(:disabled) { background: rgba(124, 196, 154, .22); bord
 
 #targetrow { justify-content: space-between; min-height: 26px; }
 #target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
-section.grow { min-height: 130px; }
+
 
 /* grade: presets, live rows, key switch */
 .presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
@@ -64,6 +64,11 @@ section.grow { min-height: 130px; }
 .cap button.switch.on i { background: var(--green); }
 .cap button.switch.on i::after { transform: translateX(10px); background: #fff; }
 .cap button.switch.mixed i { background: rgba(79, 174, 109, .45); }
-.clip.pick { cursor: pointer; }
-.clip.pick:hover { background: var(--seg-hover); }
-.clip.picked { background: rgba(217, 134, 89, .14); box-shadow: inset 2px 0 0 #d98659; }
+
+/* duplicate check */
+.dupes { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.dupe { padding: 6px 9px; border-left: 2px solid var(--warn); background: var(--warn-soft); border-radius: 3px; color: #ead7a8; font-size: 11.5px; overflow-wrap: anywhere; }
+#dupstate { font-size: 12px; }
+#rlist { margin-top: 8px; }
+#rlearn { font-size: 12px; color: var(--text-2); }
+#tab-about select { height: 28px; }

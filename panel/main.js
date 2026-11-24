@@ -15,6 +15,8 @@
   var SAFETY = 0.95;          // aim 5% under the size cap (VBR drift)
 
   var $ = function (id) { return document.getElementById(id); };
+  var GO_ICON = (document.querySelector('#go svg') || { outerHTML: '' }).outerHTML;
+  var FFPROBE = ['/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe', '/usr/bin/ffprobe'].filter(function (f) { try { return fs.existsSync(f); } catch (e) { return false; } })[0] || null;
   var state = { info: null, scope: 'all', outDir: '', plan: [], busy: false };
 
   function evalJsx(script) {
@@ -102,7 +104,7 @@
     var n = state.plan.length;
     $('count').textContent = n + (n === 1 ? ' clip' : ' clips');
     $('summary').textContent = n ? 'largest ≈ ' + maxGb.toFixed(2) + ' GB' : '';
-    $('go').textContent = state.scope === 'all' ? 'Export all (' + n + ')' : 'Export ' + n;
+    $('go').innerHTML = GO_ICON + '<span></span>'; $('go').lastChild.textContent = state.scope === 'all' ? 'Export all (' + n + ')' : 'Export ' + n;
     $('go').disabled = !n || state.busy;
   }
   var TONE = { queued: 'ok', ok: 'ok', skipped: 'warn', failed: 'bad', '': 'busy' };
@@ -240,19 +242,66 @@
   $('updatebtn').addEventListener('click', applyUpdate);
   checkUpdate();
 
-  // ---------- export: size check ----------
-  function sizeCheck() {
-    if (state.busy) return;
-    var st = settings(), over = 0, missing = 0, ok = 0;
-    state.plan.forEach(function (p, i) {
-      if (!fs.existsSync(p.out)) { missing++; setRow(i, 'skipped', 'missing'); return; }
-      var gb = fs.statSync(p.out).size / 1e9;
-      if (gb > st.capGb) { over++; setRow(i, 'failed', gb.toFixed(2) + ' GB'); } else { ok++; setRow(i, 'ok', gb.toFixed(2) + ' GB'); }
+  // ---------- results: verify every output file (exists, H.264, frame size, size cap) ----------
+  function probe(file) {
+    return new Promise(function (resolve) {
+      if (!FFPROBE) return resolve(null);
+      cp.execFile(FFPROBE, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,width,height', '-of', 'json', file], function (err, out) {
+        if (err) return resolve({ error: 'unreadable' });
+        try { resolve((JSON.parse(out).streams || [])[0] || { error: 'no video stream' }); } catch (e) { resolve({ error: 'unreadable' }); }
+      });
     });
-    if (!state.plan.length) { status('Nothing to check: no clips listed.', 'warn'); return; }
-    status(ok + ' within ' + st.capGb + ' GB' + (over ? ', ' + over + ' over the limit' : '') + (missing ? ', ' + missing + ' not exported yet' : '') + '.', over ? 'bad' : missing ? 'warn' : 'ok');
   }
-  $('sizecheck').addEventListener('click', sizeCheck);
+  async function verify() {
+    if (state.busy) return;
+    showTab('results');
+    var st = settings(), plan = state.plan.slice(), rows = [], box = $('vlist');
+    if (!plan.length) { box.innerHTML = '<div class="empty">Nothing to check: no clips listed on the Export tab.</div>'; vstatus('', ''); return; }
+    state.busy = true; $('verify').disabled = true; $('sizecheck').disabled = true;
+    for (var i = 0; i < plan.length; i++) {
+      var p = plan[i], r = { name: p.stem + '.mp4', verified: false, label: 'missing', detail: 'not exported yet' };
+      vstatus('Checking ' + (i + 1) + ' of ' + plan.length + ' — ' + r.name, '');
+      if (fs.existsSync(p.out)) {
+        var bytes = fs.statSync(p.out).size, gb = bytes / 1e9, info = await probe(p.out), problems = [];
+        if (gb > st.capGb) problems.push('over ' + st.capGb + ' GB');
+        if (info && !info.error) {
+          if (info.codec_name !== 'h264') problems.push(info.codec_name + ', not H.264');
+          if (info.width !== p.w || info.height !== p.h) problems.push(info.width + '×' + info.height + ', expected ' + p.w + '×' + p.h);
+        } else if (info && info.error) problems.push(info.error);
+        r.detail = gb.toFixed(2) + ' GB' + (info && !info.error ? ' · ' + info.codec_name.toUpperCase() + ' · ' + info.width + '×' + info.height : ' · codec not checked (ffprobe missing)') + (problems.length ? ' · ' + problems.join(', ') : '');
+        r.verified = !problems.length && !!info;
+        r.label = problems.length ? 'fix' : info ? 'verified' : 'size ok';
+        setRow(i, problems.length ? 'failed' : 'ok', gb.toFixed(2) + ' GB');
+      } else setRow(i, 'skipped', 'missing');
+      rows.push(r);
+    }
+    box.innerHTML = '';
+    rows.forEach(function (r) {
+      var row = document.createElement('div'); row.className = 'res';
+      row.innerHTML = '<span class="n"></span><span class="d"></span><span class="chip"></span>';
+      row.children[0].textContent = r.name; row.children[1].textContent = r.detail; row.children[2].textContent = r.label;
+      row.children[2].className = 'chip ' + (r.verified ? 'ok' : r.label === 'missing' ? '' : 'warn');
+      box.appendChild(row);
+    });
+    var ok = rows.filter(function (r) { return r.verified; }).length, missing = rows.filter(function (r) { return r.label === 'missing'; }).length, bad = rows.length - ok - missing;
+    $('vok').textContent = ok + ' verified'; $('vbad').textContent = bad + ' to fix' + (missing ? ' · ' + missing + ' not exported' : '');
+    $('vwhen').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    vstatus(ok + ' of ' + rows.length + ' verified' + (bad ? ', ' + bad + ' need fixing' : '') + (missing ? ', ' + missing + ' not exported yet' : '') + '.', bad ? 'bad' : missing ? 'warn' : 'ok');
+    state.busy = false; $('verify').disabled = false; $('sizecheck').disabled = false;
+  }
+  function vstatus(t, tone) { var el = $('vstatus'); el.textContent = t; el.className = 'status' + (tone ? ' tone-' + tone : ''); }
+  $('sizecheck').addEventListener('click', verify);
+  $('verify').addEventListener('click', verify);
+  $('vopen').addEventListener('click', function () { if (state.outDir) cp.execFile('/usr/bin/open', [fs.existsSync(state.outDir) ? state.outDir : path.dirname(state.outDir)]); });
+
+  // ---------- tabs ----------
+  function showTab(name) {
+    Array.prototype.forEach.call($('tabs').children, function (b) { b.className = b.getAttribute('data-tab') === name ? 'on' : ''; });
+    ['export', 'results', 'about'].forEach(function (t) { $('tab-' + t).hidden = t !== name; });
+  }
+  Array.prototype.forEach.call($('tabs').children, function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); }); });
+  $('probestate').textContent = FFPROBE ? 'ffprobe found: codec and frame size are verified' : 'ffprobe missing: only the size is verified (brew install ffmpeg)';
+  $('probestate').className = 'chip ' + (FFPROBE ? 'ok' : 'warn');
 
   // ---------- wiring ----------
   ['capgb', 'capmbps', 'replace', 'autostart'].forEach(function (id) {

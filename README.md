@@ -40,13 +40,17 @@ Every build makes:
 - one **S-Log Lumetri** per body clip (ALEXA LogC2Rec709 LUT + grade); vertical clips rotated;
 - the S-log Project-panel columns, then a save.
 
-Building again replaces the `Sequences` bin (press twice to confirm). The XML it imports is kept as `Project File/<Client>_GRADED.xml`.
+Build always makes all sequences together; building again replaces the `Sequences` bin (press twice to confirm).
+
+**Duplicate check** (Build, also runs before every build): decided by content, never by file name. Same size + sampled hash + full SHA-1 = identical copy, skipped. Same shape and length + matching sound at 5 time-aligned points + matching keyframes = same recording in another file, kept and flagged. Everything else is a different take (`CAM2-4309 (1).MP4` included). Results are cached per file (path, size, modified time) in `~/UAI Luma Cut/dupe_cache.json`. The XML it imports is kept as `Project File/<Client>_GRADED.xml`.
 
 **Skin (Custom) pass** — `engine/colormode/cm_clone.py` copies one clip's Color Mode adjustment (Color Shift on skin) to other clips in the saved project and sets each group's Hue / Lum Shift, the same as the Color tab's *Paste Grade → Paste and Replace*. Close the project in Premiere first. Example groups file: one entry per look (office/library, green screen, outdoor) with `from`, `to`, `hue`, `lum`. `cm_tool.py read` lists every clip's values.
 
-**Grade** — nudge the Best grade on selected clips or the whole sequence; copy one clip's grade to the selection or to every clip from the same camera. The **Custom** look stays a Color Mode adjustment (Color Shift) added by hand: Premiere's scripting cannot create or copy it.
+**Grade** — scope Selected / Current sequence / All sequences; exposure presets, live Lumetri, skin and green-screen Color Shift (Apply), Remove green, copy, undo.
 
-**Review** — every body clip with IN/OUT jump buttons, flagged clips highlighted. Move a cut with a Rolling Edit, then **Re-sync markers**. Saves IN/OUT stills to `QC Stills`.
+**Review** — Flagged by system / All clips; a click on a clip selects that exact timeline item. Move a cut with a Rolling Edit, then **Re-sync markers**. **Save grade reference** keeps each listed clip's grade values plus one image (`Final Output/Stills/<clip>_REF.jpg`, 1920 px) and a 320 px copy for learning. **Final check & save learning**: first press compares the timeline with the build baseline (IN/OUT, Lumetri, skin and green Color Shift) and lists the changes; second press keeps them.
+
+**Learning** (`~/UAI Luma Cut/learning`): one batch per client project; only the last 3 batches are kept by default (About: latest only / 3 / 5), capped at 10 MB including images; older batches are erased after a new one is saved. Rules (bounded mean corrections) only switch on after the same correction appears in 2 batches; Standalone applies the Lumetri and trim rules, Claude reads `claude_context.json`. Reset learning (About) keeps a backup file.
 
 Limits: Premiere's scripting cannot set the Lumetri LUT directly, so the grade comes in through the imported XML. Project-panel sorting is a manual click (Video Info header, arrow down).
 
@@ -55,8 +59,7 @@ Limits: Premiere's scripting cannot set the Lumetri LUT directly, so the grade c
 - **Export all** queues each enabled clip on V1 as its own file, cut straight from the sequence, so grade and trim changes are always what exports.
 - File name = clip name (`CAM1-3918.mp4`); folder = the client's **Final Output** (or **Browse…**).
 - Every file is 4K in its sequence's orientation (3840×2160 or 2160×3840), H.264, Rec.709, AAC 320 kbps, and under the size cap (2 GB default); bitrate = min(200, 15200 ÷ seconds − 0.32) Mbps.
-- **Check exported files** shows each file's real size and flags anything over the cap.
-- Also has **Grade**, **Review** and **Setup** tabs (same tools as above).
+- **Verify files** (Results tab) reads every output: exists, H.264, the expected frame size (ffprobe) and under the cap; only files that pass every check show *verified*.
 
 Existing files are skipped unless *Replace existing files* is ticked.
 

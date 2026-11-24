@@ -62,9 +62,10 @@ function speechBounds(ffmpeg, file, cb) {
   });
 }
 // frames in/out (out inclusive) for a clip, from speech bounds
-function trimFrames(bounds, fps, frames) {
+function trimFrames(bounds, fps, frames, adj) {
+  adj = adj || {};
   if (!bounds) return { inF: 0, outF: frames - 1, flag: 'no speech found - set IN/OUT by hand' };
-  var inT = bounds.start - PRE, outT = bounds.end + POST;
+  var inT = bounds.start - (PRE + (adj.pre || 0)), outT = bounds.end + POST + (adj.post || 0);   // adj: learned, bounded ±0.5 s
   // never roll into another sound: stop 0.1 s before it (keeping at least 0.1 s of air after / before the words)
   if (bounds.nextSound !== null && bounds.nextSound !== undefined) outT = Math.min(outT, Math.max(bounds.end + 0.1, bounds.nextSound - 0.1));
   if (bounds.prevSound !== null && bounds.prevSound !== undefined) inT = Math.max(inT, Math.min(bounds.start - 0.1, bounds.prevSound + 0.1));

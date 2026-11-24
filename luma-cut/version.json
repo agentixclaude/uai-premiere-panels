@@ -1,1 +1,1 @@
-{"version": "1.4.1", "notes": "Standalone trim: IN/OUT never roll into a breath or other sound before / after the words (OUT stops 0.1 s before the next sound)"}
+{"version": "1.5.0", "notes": "New look; Build is all sequences only, with a duplicate check by content (not file name); Review: one Final check & save learning, one Save grade reference, Flagged / All clips; learning keeps the last 3 batches (About)"}

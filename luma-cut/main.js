@@ -11,6 +11,8 @@
   var MP4 = nodeReq(path.join(EXT_DIR, 'lib', 'mp4probe.js'));
   var SPEECH = nodeReq(path.join(EXT_DIR, 'lib', 'speech.js'));
   var CM = nodeReq(path.join(EXT_DIR, 'lib', 'colormode.js'));
+  var DUPES = nodeReq(path.join(EXT_DIR, 'lib', 'dupes.js'));
+  var LEARN = nodeReq(path.join(EXT_DIR, 'lib', 'learning.js'));
   var CM_TEMPLATE = path.join(EXT_DIR, 'lib', 'colormode_template.json');
   var HOME_DIR = path.join(os.homedir(), 'UAI Luma Cut');
   var MEMORY_FILE = path.join(HOME_DIR, 'grade_memory.jsonl');
@@ -34,8 +36,11 @@
   function store(k, v) { try { if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v); } catch (e) {} }
   function load(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
 
-  var SAMPLES_FILE = path.join(HOME_DIR, 'grade_samples.jsonl');
-  var state = { bscope: load('lc:bscope') || 'all', picks: {}, info: null, client: null, clips: [], skipped: [], mode: load('lc:mode') || 'standalone', plan: null, request: null, busy: false, armed: 0, ffmpeg: SPEECH.findFfmpeg() };
+  var SAMPLES_FILE = path.join(HOME_DIR, 'grade_samples.jsonl');          // old file, imported once into the learning store
+  var DUPE_CACHE = path.join(HOME_DIR, 'dupe_cache.json');
+  var learn = new LEARN.Store(path.join(HOME_DIR, 'learning'));
+  try { learn.migrate(MEMORY_FILE, SAMPLES_FILE); } catch (e) { log('learning migrate: ' + e.message); }
+  var state = { all: [], dup: { results: {}, checked: false, busy: false }, info: null, client: null, clips: [], skipped: [], mode: load('lc:mode') || 'standalone', plan: null, request: null, busy: false, armed: 0, ffmpeg: SPEECH.findFfmpeg() };
 
   // ---------------- client folder ----------------
   function subdir(dir, re) {
@@ -66,18 +71,56 @@
     scanClips(); loadPlan(); renderClient();
   }
   function scanClips() {
-    state.clips = []; state.skipped = [];
+    state.clips = []; state.skipped = []; state.all = []; state.dup = { results: {}, checked: false, busy: false };
     var c = state.client; if (!c || !c.rawDir) return;
     var names = fs.readdirSync(c.rawDir).filter(function (n) { return VIDEO_RE.test(n) && n.charAt(0) !== '.'; }).sort();
     names.forEach(function (n) {
       var p = path.join(c.rawDir, n);
-      var orig = n.replace(/ \(\d+\)(\.[^.]+)$/, '$1');
-      if (orig !== n && names.indexOf(orig) >= 0) { state.skipped.push({ file: n, why: 'duplicate of ' + orig }); return; }
       try {
         var m = MP4.probe(p);
-        state.clips.push({ file: n, path: p, rel: path.relative(c.dir, p), w: m.w, h: m.h, raw_w: m.raw_w, raw_h: m.raw_h, rot: m.rot, fps: m.fps, frames: m.frames, seconds: m.seconds });
+        state.all.push({ file: n, path: p, rel: path.relative(c.dir, p), w: m.w, h: m.h, raw_w: m.raw_w, raw_h: m.raw_h, rot: m.rot, fps: m.fps, frames: m.frames, seconds: m.seconds });
       } catch (e) { state.skipped.push({ file: n, why: e.message }); }
     });
+    // duplicates are decided by content (lib/dupes.js); a stored answer is reused while every file is unchanged
+    state.dup.checked = DUPES.cacheFresh(state.all, DUPE_CACHE);
+    state.dup.results = state.dup.checked ? DUPES.cachedResults(state.all, DUPE_CACHE) : {};
+    applyDupes();
+  }
+  function applyDupes() {
+    var r = state.dup.results;
+    state.skipped = state.skipped.filter(function (x) { return !x.dup; });
+    state.clips = state.all.filter(function (c) {
+      if (r[c.file] && r[c.file].status === 'identical') { state.skipped.push({ file: c.file, why: 'identical to ' + r[c.file].of, dup: true }); return false; }
+      return true;
+    });
+  }
+  async function checkDupes(quiet) {
+    if (state.dup.busy || !state.all.length) return true;
+    state.dup.busy = true; renderDupes(); renderTarget();
+    try {
+      var res = await DUPES.check(state.all, { cacheFile: DUPE_CACHE, ffmpeg: state.ffmpeg, progress: function (t) { $('dupstate').textContent = t + '…'; } });
+      DUPES.markChecked(state.all, DUPE_CACHE, res.results);
+      state.dup.results = res.results; state.dup.checked = true;
+      applyDupes();
+      log('duplicate check ' + state.client.name + ': ' + JSON.stringify(res.results));
+    } catch (e) {
+      state.dup.busy = false; renderDupes(); renderTarget();
+      if (!quiet) setStatus('status', 'Duplicate check failed: ' + e.message, 'bad');
+      return false;
+    }
+    state.dup.busy = false; renderClient();
+    return true;
+  }
+  function renderDupes() {
+    var d = state.dup, el = $('dupstate'), box = $('duplist'); box.innerHTML = '';
+    $('dupcheck').disabled = d.busy || !state.all.length || state.busy;
+    if (!state.client || !state.all.length) { el.textContent = 'No clips to check'; el.className = 'muted'; return; }
+    if (d.busy) { el.className = 'muted'; return; }
+    if (!d.checked) { el.textContent = 'Not checked yet · runs before Build'; el.className = 'muted'; return; }
+    var keys = Object.keys(d.results), ident = keys.filter(function (k) { return d.results[k].status === 'identical'; }).length;
+    el.textContent = !keys.length ? 'No duplicates · ' + state.all.length + ' different clips' : (ident ? ident + ' identical copy skipped' : '') + (keys.length - ident ? (ident ? ' · ' : '') + (keys.length - ident) + ' to check' : '');
+    el.className = keys.length ? 'tone-warn' : 'tone-ok';
+    keys.forEach(function (k) { var p = document.createElement('div'); p.className = 'dupe'; p.textContent = k + ' — ' + d.results[k].detail; box.appendChild(p); });
   }
   function readJson(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return null; } }
   function loadPlan() {
@@ -112,7 +155,7 @@
     }
     $('clientmeta').textContent = meta;
     $('clientmeta').className = 'note' + (c && !c.rawDir ? ' tone-warn' : '');
-    renderMode(); renderClips(); renderTarget();
+    renderMode(); renderDupes(); renderClips(); renderTarget();
   }
   function renderMode() {
     Array.prototype.forEach.call($('mode').children, function (b) { b.className = b.getAttribute('data-v') === state.mode ? 'on' : ''; });
@@ -149,9 +192,8 @@
       list.appendChild(h);
       g.forEach(function (c) {
         var p = usablePlan(c), row = document.createElement('div');
-        row.className = 'clip pick' + (p && p.flag ? ' flag' : '') + (state.picks[c.file] ? ' picked' : '');
-        row.title = 'Click to pick this clip for Selected clip';
-        row.addEventListener('click', function () { if (state.picks[c.file]) delete state.picks[c.file]; else state.picks[c.file] = true; renderClips(); renderTarget(); });
+        var dupe = state.dup.results[c.file];
+        row.className = 'clip' + (p && p.flag ? ' flag' : '') + (dupe ? ' flag' : '');
         row.innerHTML = '<span class="n"></span><span class="t"></span><span class="chip"></span>';
         row.children[0].textContent = c.file;
         row.children[0].title = p && p.flag ? p.flag : c.file;
@@ -161,6 +203,7 @@
         if (!p) { chip.textContent = 'not trimmed'; }
         else if (p.flag) { chip.textContent = 'check'; chip.className = 'chip warn'; }
         else { chip.textContent = state.plan.source === 'claude' ? 'face' : 'audio'; chip.className = 'chip ok'; }
+        if (dupe) { chip.textContent = 'check'; chip.className = 'chip warn'; row.children[0].title = dupe.detail; }
         list.appendChild(row);
       });
     });
@@ -187,36 +230,26 @@
       t.className = 'muted' + (inClient ? '' : ' tone-warn');
       np.hidden = inClient;
     }
-    Array.prototype.forEach.call($('bscope').children, function (x) { x.className = x.getAttribute('data-v') === state.bscope ? 'on' : ''; });
-    var npick = Object.keys(state.picks).length;
-    $('bscopenote').textContent = state.bscope === 'all' ? 'Re-cuts every clip and replaces the Sequences bin (grades start fresh).'
-      : state.bscope === 'sequence' ? 'Re-cuts every clip in the open sequence in place. Grades on the clips stay.'
-      : 'Re-cuts only the clips selected in the timeline' + (npick ? ' + ' + npick + ' picked in the list' : ' (or click rows in the list)') + '. Grades stay.';
     var b = $('build');
-    var ready = c && c.rawDir && state.clips.length && projectOk && !state.busy && (state.mode === 'standalone' || claudePlanReady() || state.bscope !== 'all');
-    if (state.bscope !== 'all') {
-      b.className = 'primary'; b.disabled = !ready; state.armed = 0;
-      b.textContent = state.bscope === 'sequence' ? 'Analyse and cut current sequence' : 'Analyse and cut selected' + (npick ? ' (+' + npick + ')' : '');
-      return;
-    }
+    var ready = c && c.rawDir && state.clips.length && projectOk && !state.busy && !state.dup.busy && (state.mode === 'standalone' || claudePlanReady());
     b.disabled = !ready;
     if (state.armed && Date.now() - state.armed < 4000) { b.textContent = 'Click again to replace the Sequences bin'; b.className = 'primary armed'; return; }
     state.armed = 0; b.className = 'primary';
     var rebuild = projectOk && i.hasSequencesBin;
-    b.textContent = state.mode === 'claude' ? (rebuild ? 'Rebuild from Claude\'s plan' : 'Build from Claude\'s plan') : (rebuild ? 'Analyse and rebuild' : 'Analyse and build');
+    b.textContent = state.mode === 'claude' ? (rebuild ? 'Rebuild all sequences from Claude\'s plan' : 'Build all sequences from Claude\'s plan') : (rebuild ? 'Analyse and rebuild all sequences' : 'Analyse and build all sequences');
   }
 
   // ---------------- Claude mode ----------------
   function promptText() {
     var c = state.client;
     return 'Luma Cut: make the trim and grade plan for ' + c.name + '.\nRequest file: ' + c.requestFile +
-      '\nEngine: ' + ENGINE_DIR + '\nPast review corrections: ' + MEMORY_FILE + '\nGrade samples (match these looks): ' + SAMPLES_FILE + '\nWrite luma_plan.json next to the request file.';
+      '\nEngine: ' + ENGINE_DIR + '\nLearning (approved rules + recent reviews and grade references): ' + learn.ctx + '\nWrite luma_plan.json next to the request file.';
   }
   function writeRequest() {
     var c = state.client;
     var req = {
       version: 1, requestId: crypto.randomBytes(6).toString('hex'), createdAt: new Date().toISOString(),
-      client: c.name, ac: c.ac, clientDir: c.dir, projRel: c.projRel, rawRel: c.rawRel, engine: ENGINE_DIR, memory: MEMORY_FILE, samples: SAMPLES_FILE,
+      client: c.name, ac: c.ac, clientDir: c.dir, projRel: c.projRel, rawRel: c.rawRel, engine: ENGINE_DIR, learning: learn.ctx, duplicates: state.dup.results,
       rules: { preRoll: SPEECH.PRE, postRoll: SPEECH.POST, house: XB.HOUSE },
       clips: state.clips.map(function (x) { return { file: x.file, rel: x.rel, path: x.path, w: x.w, h: x.h, raw_w: x.raw_w, raw_h: x.raw_h, rot: x.rot, fps: x.fps, frames: x.frames }; })
     };
@@ -225,8 +258,9 @@
     state.request = req;
     return req;
   }
-  $('askclaude').addEventListener('click', function () {
-    if (!state.client || !state.clips.length) { setStatus('status', 'Choose a client folder with clips first.', 'warn'); return; }
+  $('askclaude').addEventListener('click', async function () {
+    if (!state.client || !state.all.length) { setStatus('status', 'Choose a client folder with clips first.', 'warn'); return; }
+    if (!state.dup.checked) { setStatus('status', 'Checking for duplicate files first…'); if (!(await checkDupes(true))) { setStatus('status', 'Duplicate check failed. Press Check files to see why.', 'bad'); return; } }
     try {
       writeRequest();
       var p = cp.spawn('/usr/bin/pbcopy'); p.stdin.end(promptText());
@@ -243,23 +277,25 @@
   }, 3000);
 
   // ---------------- Standalone analysis ----------------
-  function analyseClip(c) {
+  function analyseClip(c, adj) {
     return new Promise(function (resolve) {
       var fps = c.fps || 29.97;
       if (!state.ffmpeg) return resolve({ inF: 0, outF: c.frames - 1, flag: 'ffmpeg missing - set IN/OUT by hand' });
       SPEECH.speechBounds(state.ffmpeg, c.path, function (err, b) {
         if (err) return resolve({ inF: 0, outF: c.frames - 1, flag: 'audio could not be read - set IN/OUT by hand' });
-        resolve(SPEECH.trimFrames(b, fps, c.frames));
+        resolve(SPEECH.trimFrames(b, fps, c.frames, adj));
       });
     });
   }
   async function standalonePlan(progress) {
-    var clips = [];
+    var clips = [], learned = learn.standalone(), house = {};
+    Object.keys(XB.HOUSE).forEach(function (k) { house[k] = XB.HOUSE[k] + (learned.grade[k] || 0); });
+    if (learned.count) log('standalone uses ' + learned.count + ' learned rules: ' + JSON.stringify(learned));
     for (var i = 0; i < state.clips.length; i++) {
       var c = state.clips[i];
       progress(i, state.clips.length, 'Reading audio ' + (i + 1) + ' of ' + state.clips.length + ' — ' + c.file);
-      var t = await analyseClip(c);
-      clips.push({ file: c.file, path: c.path, w: c.w, h: c.h, rot: c.rot, fps: c.fps, frames: c.frames, 'in': t.inF, out: t.outF, flag: t.flag, grade: XB.HOUSE });
+      var t = await analyseClip(c, learned.trim);
+      clips.push({ file: c.file, path: c.path, w: c.w, h: c.h, rot: c.rot, fps: c.fps, frames: c.frames, 'in': t.inF, out: t.outF, flag: t.flag || (state.dup.results[c.file] ? state.dup.results[c.file].detail : ''), grade: house });
     }
     var plan = { version: 1, source: 'standalone', client: state.client.name, createdAt: new Date().toISOString(), clips: clips };
     fs.mkdirSync(state.client.projDir, { recursive: true });
@@ -297,10 +333,16 @@
     state.armed = 0;
     var lut = findLut(info.appPath);
     if (!lut) { setStatus('status', 'Premiere\'s ALEXA LUT was not found. Reinstall Premiere Pro.', 'bad'); return; }
+    if (!state.dup.checked) {
+      setStatus('status', 'Checking for duplicate files first…');
+      if (!(await checkDupes(true))) { setStatus('status', 'Duplicate check failed, build stopped. Press Check files to see why.', 'bad'); return; }
+    }
     state.busy = true; renderTarget(); $('build').className = 'primary busy';
     try {
       var plan = state.mode === 'claude' ? state.plan : await standalonePlan(progress);
       if (state.mode === 'claude' && !claudePlanReady()) throw new Error('Claude\'s plan is not ready yet');
+      var keepFiles = {}; state.clips.forEach(function (c) { keepFiles[c.file] = true; });
+      plan = Object.assign({}, plan, { clips: plan.clips.filter(function (x) { return keepFiles[x.file]; }) });   // identical copies never reach the timeline
       progress(0.9, 1, 'Writing the XML…');
       var template = fs.readFileSync(path.join(EXT_DIR, 'lumetri', 'filter.xml'), 'utf8');
       var res = XB.build(plan, { template: template, lutPath: lut });
@@ -329,75 +371,8 @@
     setTimeout(function () { $('progress').hidden = true; }, 1200);
     await refresh();
   }
-  $('build').addEventListener('click', function () { if (state.bscope === 'all') build(); else cutScoped(state.bscope); });
-  Array.prototype.forEach.call($('bscope').children, function (b) {
-    b.addEventListener('click', function () { if (state.busy) return; state.bscope = b.getAttribute('data-v'); store('lc:bscope', state.bscope); renderTarget(); setStatus('status', ''); });
-  });
-
-  // ---------------- scoped cut: current sequence / selected clips, in place on the timeline ----------------
-  function clipByPath(p) {
-    for (var i = 0; i < state.clips.length; i++) if (samePath(state.clips[i].path, p)) return state.clips[i];
-    return null;
-  }
-  // trim for one clip: Claude's plan when it is ready (Claude mode), otherwise the audio
-  async function trimFor(c) {
-    if (state.mode === 'claude') {
-      var p = claudePlanReady() ? planFor(c.file) : null;
-      if (!p) throw new Error('Claude\'s plan has no entry for ' + c.file + '. Ask Claude first, or switch to Standalone.');
-      return { inF: p['in'], outF: p.out, flag: p.flag, grade: p.grade };
-    }
-    var t = await analyseClip(c);
-    return { inF: t.inF, outF: t.outF, flag: t.flag };
-  }
-  function mergePlan(entries) {
-    var c = state.client, plan = readJson(c.planFile) || { version: 1, source: state.mode, client: c.name, clips: [] };
-    if (!Array.isArray(plan.clips)) plan.clips = [];
-    entries.forEach(function (e) {
-      var i = -1; plan.clips.forEach(function (x, k) { if (x.file === e.file) i = k; });
-      if (i >= 0) { var keep = plan.clips[i]; e.grade = e.grade || keep.grade; plan.clips[i] = e; } else plan.clips.push(e);
-    });
-    plan.updatedAt = new Date().toISOString();
-    fs.mkdirSync(c.projDir, { recursive: true });
-    fs.writeFileSync(c.planFile, JSON.stringify(plan, null, 1));
-    loadPlan();
-  }
-  async function cutScoped(scope) {
-    if (state.busy || !state.client) return;
-    var tg = await jsx('lcCutTargets(' + q(scope) + ',' + q(JSON.stringify(Object.keys(state.picks))) + ')');
-    if (tg.error) { setStatus('status', tg.error, 'warn'); return; }
-    var list = tg.clips || [];
-    var missing = Object.keys(state.picks).filter(function (f) { return !list.some(function (t) { return t.name === f; }); });
-    if (!list.length) { setStatus('status', scope === 'selected' ? 'Select the clip in the timeline (or click it in the list) first.' + (missing.length ? ' ' + missing.join(', ') + ' is not on any sequence yet.' : '') : 'The open sequence has no clips.', 'warn'); return; }
-    state.busy = true; renderTarget(); $('build').className = 'primary busy';
-    var done = [], failed = [], entries = [], flagged = 0;
-    try {
-      for (var i = 0; i < list.length; i++) {
-        var t = list[i], c = clipByPath(t.path);
-        progress(i, list.length, 'Cutting ' + (i + 1) + ' of ' + list.length + ' — ' + t.name);
-        if (!c) { try { var m = MP4.probe(t.path); c = { file: path.basename(t.path), path: t.path, w: m.w, h: m.h, rot: m.rot, fps: m.fps, frames: m.frames, seconds: m.seconds }; } catch (e0) { failed.push(t.name + ' (not readable)'); continue; } }
-        var fps = c.fps || 29.97;
-        try {
-          var tr = await trimFor(c);
-          var r = await jsx('lcCutApply(' + q(t.seqId) + ',' + q(t.path) + ',' + (tr.inF / fps) + ',' + ((tr.outF + 1) / fps) + ',' + q(tr.flag || '') + ')');
-          if (r.error) throw new Error(String(r.error).replace(/^ERR:/, ''));
-          if (tr.flag) flagged++;
-          done.push(t.name);
-          entries.push({ file: c.file, path: c.path, w: c.w, h: c.h, rot: c.rot, fps: c.fps, frames: c.frames, 'in': tr.inF, out: tr.outF, flag: tr.flag, grade: tr.grade });
-          log('cut ' + t.name + ' in ' + t.sequence + ': ' + tr.inF + '-' + tr.outF + (tr.flag ? ' flag ' + tr.flag : ''));
-        } catch (e) { failed.push(t.name + ': ' + e.message); log('cut failed ' + t.name + ': ' + e.message); }
-      }
-      if (entries.length) mergePlan(entries);
-      await evalJsx('lcSave()');
-      $('progress').firstChild.style.width = '100%';
-      var msg = 'Cut ' + plural(done.length) + (done.length <= 3 && done.length ? ' (' + done.join(', ') + ')' : '') + ' in place, grades kept' +
-        (flagged ? ' · ' + flagged + ' to check in Review' : '') + (failed.length ? ' · failed: ' + failed.join(' · ') : '') + '.';
-      setStatus('status', msg, failed.length ? 'bad' : flagged ? 'warn' : 'ok');
-      if (scope === 'selected') state.picks = {};
-    } catch (e) { setStatus('status', 'Stopped: ' + e.message, 'bad'); }
-    state.busy = false;
-    setTimeout(function () { $('progress').hidden = true; }, 1200);
-    await refresh();
-  }
+  $('build').addEventListener('click', build);
+  $('dupcheck').addEventListener('click', function () { if (!state.busy) checkDupes(false); });
   $('newproj').addEventListener('click', async function () {
     var c = state.client; if (!c || state.busy) return;
     fs.mkdirSync(c.projDir, { recursive: true });
@@ -457,7 +432,7 @@
     ['build', 'grade', 'review', 'about'].forEach(function (t) { $('tab-' + t).hidden = t !== name; });
     refreshTab();
   }
-  function refreshTab() { if (activeTab === 'grade') gradeRefresh(); if (activeTab === 'review') { reviewRefresh(); showBaseInfo(); } }
+  function refreshTab() { if (activeTab === 'grade') gradeRefresh(); if (activeTab === 'review') reviewRefresh(); if (activeTab === 'about') renderLearnInfo(); }
   Array.prototype.forEach.call($('tabs').children, function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); }); });
 
   // ---------------- grade ----------------
@@ -779,27 +754,38 @@
   }
 
   // ---------------- review ----------------
-  var review = { data: null, sscope: 'selected' };
+  // List: Flagged by system (REVIEW markers) or All clips; a row click selects that exact timeline clip (by its node id).
+  var review = { data: null, filter: load('lc:rfilter') || 'flagged' };
   function isFlag(mk) { return /review/i.test(mk.name + ' ' + mk.comments); }
   function flagsFor(name) { return review.data ? review.data.markers.filter(function (mk) { return isFlag(mk) && mk.name.replace(/^(IN|OUT) /, '') === name; }) : []; }
+  function reviewClips() {
+    var d = review.data; if (!d) return [];
+    return d.clips.filter(function (c) { return review.filter === 'all' || flagsFor(c.name).length; });
+  }
   async function reviewRefresh() {
     var d = await jsx('lcReview()'), list = $('rlist'); list.innerHTML = '';
-    if (d.error) { review.data = null; list.innerHTML = '<div class="empty"></div>'; list.firstChild.textContent = d.error; return; }
+    Array.prototype.forEach.call($('rfilter').children, function (x) { x.className = x.getAttribute('data-v') === review.filter ? 'on' : ''; });
+    if (d.error) { review.data = null; list.innerHTML = '<div class="empty"></div>'; list.firstChild.textContent = d.error; renderLearnInfo(); return; }
     review.data = d;
-    var frame = Number(d.timebase);
+    var frame = Number(d.timebase), nFlags = 0, seenFlag = {};
+    d.clips.forEach(function (c) { if (!seenFlag[c.name] && flagsFor(c.name).length) { seenFlag[c.name] = 1; nFlags++; } });
+    $('rsummary').textContent = nFlags ? nFlags + ' flagged by the system in ' + d.sequence : 'No system flags in ' + d.sequence;
+    $('rsummary').className = nFlags ? 'tone-warn' : 'tone-ok';
     var head = document.createElement('div'); head.className = 'head';
-    var nFlags = d.markers.filter(isFlag).length;
     head.innerHTML = '<span></span><span class="muted"></span>';
     head.children[0].textContent = d.sequence; head.children[1].textContent = plural(d.clips.length) + (nFlags ? ' · ' + nFlags + ' flagged' : '');
     list.appendChild(head);
-    if (!d.clips.length) { var e = document.createElement('div'); e.className = 'empty'; e.textContent = 'No enabled clips on V1.'; list.appendChild(e); return; }
-    var seen = {};
-    d.clips.forEach(function (c) {
-      if (seen[c.name]) return; seen[c.name] = true;
+    var rows = reviewClips();
+    if (!rows.length) { var e = document.createElement('div'); e.className = 'empty'; e.textContent = review.filter === 'all' ? 'No enabled clips on V1.' : 'Nothing flagged by the system. Switch to All clips to see every clip.'; list.appendChild(e); renderLearnInfo(); return; }
+    rows.forEach(function (c) {
       var flags = flagsFor(c.name), row = document.createElement('div');
       row.className = 'rclip' + (flags.length ? ' flag' : '');
-      row.innerHTML = '<div class="top"><span class="n"></span><span class="muted"></span></div><div class="marks"><button></button><button></button></div>';
-      row.querySelector('.n').textContent = c.name;
+      row.innerHTML = '<div class="top"><button class="n link"></button><span class="muted"></span></div><div class="marks"><button></button><button></button></div>';
+      var nb = row.querySelector('.n'); nb.textContent = c.name; nb.title = 'Select this clip in the timeline';
+      nb.addEventListener('click', async function () {
+        var r = await evalJsx('lcFocus(' + q(d.seqId) + ',' + q(c.nodeId) + ')');
+        setStatus('rstatus', /^OK/.test(r) ? c.name + ' selected' : String(r).replace(/^ERR:/, ''), /^OK/.test(r) ? '' : 'warn');
+      });
       row.querySelector('.top .muted').textContent = fmtDur(c.end - c.start);
       var bIn = row.querySelectorAll('.marks button')[0], bOut = row.querySelectorAll('.marks button')[1];
       bIn.textContent = 'IN ' + fmtDur(c.start); bOut.textContent = 'OUT ' + fmtDur(c.end);
@@ -809,31 +795,21 @@
       if (flags.length) { var w = document.createElement('div'); w.className = 'why'; w.textContent = flags.map(function (f) { return f.comments; }).join(' · '); row.appendChild(w); }
       list.appendChild(row);
     });
+    renderLearnInfo();
   }
-  async function go(ticks, label) { await evalJsx('lcGoto(' + q(ticks) + ')'); if (review.data) review.data.position = ticks; setStatus('rstatus', label); }
-  function step(dir) {
-    var rows = review.data ? review.data.markers.filter(isFlag) : [];
-    if (!rows.length) { setStatus('rstatus', 'Nothing flagged in this sequence.', 'ok'); return; }
-    var pos = Number(review.data.position), pick;
-    if (dir > 0) pick = rows.filter(function (mk) { return Number(mk.ticks) > pos; })[0] || rows[0];
-    else { var before = rows.filter(function (mk) { return Number(mk.ticks) < pos; }); pick = before[before.length - 1] || rows[rows.length - 1]; }
-    go(pick.ticks, pick.name + ' — ' + pick.comments);
-  }
-  $('rnext').addEventListener('click', function () { step(1); });
-  $('rprev').addEventListener('click', function () { step(-1); });
+  async function go(ticks, label) { await evalJsx('lcGoto(' + q(ticks) + ')'); setStatus('rstatus', label); }
   $('rsync').addEventListener('click', async function () {
     var r = await evalJsx('lcSyncMarkers()');
     if (/^OK:/.test(r)) setStatus('rstatus', r.slice(3) + ' markers placed on the clips\' first and last frames.', 'ok');
     else setStatus('rstatus', 'Could not re-sync: ' + String(r).replace(/^ERR:/, ''), 'bad');
     reviewRefresh();
   });
-  Array.prototype.forEach.call($('sscope').children, function (b) {
-    b.addEventListener('click', function () {
-      Array.prototype.forEach.call($('sscope').children, function (x) { x.className = x === b ? 'on' : ''; });
-      review.sscope = b.getAttribute('data-v');
-    });
+  Array.prototype.forEach.call($('rfilter').children, function (b) {
+    b.addEventListener('click', function () { review.filter = b.getAttribute('data-v'); store('lc:rfilter', review.filter); reviewRefresh(); });
   });
-  // Images go to the client's Final Output / Stills (PNG)
+
+  // ---------------- grade reference: final grade values + a compact still, in one action ----------------
+  // Team copy: Final Output / Stills / <clip>_REF.jpg (1920 px). Learning copy: 320 px JPEG in ~/UAI Luma Cut/learning/thumbs.
   function finalOutputDir() {
     if (state.client) return path.join(state.client.dir, state.client.outRel);
     if (!state.info || !state.info.open) return '';
@@ -842,84 +818,71 @@
   }
   function stillsDir() { var f = finalOutputDir(); return f ? path.join(f, 'Stills') : ''; }
   function stemOf(name) { return String(name).replace(/\.[A-Za-z0-9]{2,4}$/, '').replace(/[\/:*?"<>|]/g, '_'); }
-  async function saveImages(clips, frame, suffix) {
-    var dir = stillsDir(); fs.mkdirSync(dir, { recursive: true });
-    var failed = 0, n = 0;
-    for (var i = 0; i < clips.length; i++) {
-      var c = clips[i], stem = stemOf(c.name) + (suffix || '');
-      setStatus('rstatus', 'Saving ' + (i + 1) + ' of ' + clips.length + ' — ' + stemOf(c.name));
-      var a = await evalJsx('lcStill(' + q(c.startTicks) + ',' + q(path.join(dir, stem + '_IN')) + ')');
-      var b = await evalJsx('lcStill(' + q(String(Number(c.endTicks) - frame)) + ',' + q(path.join(dir, stem + '_OUT')) + ')');
-      if (!/^OK/.test(a) || !/^OK/.test(b)) failed++; else n += 2;
-    }
-    return { dir: dir, saved: n, failed: failed };
+  function sips(src, out, size, quality) {
+    return new Promise(function (resolve) {
+      cp.execFile('/usr/bin/sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', String(quality), '-Z', String(size), src, '--out', out], function (err) { resolve(!err && fs.existsSync(out)); });
+    });
   }
-  $('rstills').addEventListener('click', async function () {
+  function batchMeta() {
+    var name = state.client ? state.client.name : path.basename(state.info.projectPath, '.prproj').replace(/_GRADED$/, '');
+    return { key: name, client: name, ac: state.client ? state.client.ac : /(^|[^A-Za-z])AC\s*#?\s*\d+/i.test(state.info.projectPath), project: state.info.projectPath };
+  }
+  $('rref').addEventListener('click', async function () {
     if (state.busy) return;
     await reviewRefresh();
     var d = review.data; if (!d) return;
-    var flagged = {};
-    d.markers.filter(isFlag).forEach(function (mk) { flagged[mk.name.replace(/^(IN|OUT) /, '')] = true; });
-    var seen = {}, clips = d.clips.filter(function (c) { if (seen[c.name]) return false; seen[c.name] = true; return review.sscope === 'all' || (review.sscope === 'selected' ? c.selected : flagged[c.name]); });
-    if (!clips.length) { setStatus('rstatus', review.sscope === 'selected' ? 'Select clips in the timeline first.' : 'No matching clips.', 'warn'); return; }
-    state.busy = true; $('rstills').disabled = true;
-    try {
-      var r = await saveImages(clips, Number(d.timebase), '');
-      setStatus('rstatus', r.saved + ' images saved to Final Output / Stills' + (r.failed ? ' (' + r.failed + ' clips failed)' : '') + '.', r.failed ? 'warn' : 'ok');
-    } catch (e) { setStatus('rstatus', 'Stopped: ' + e.message, 'bad'); }
-    state.busy = false; $('rstills').disabled = false;
-  });
-  // Grade sample: the clip's finished grade (Lumetri + skin / green Color Shift) + an image, kept as a reference for future grading
-  $('rsample').addEventListener('click', async function () {
-    if (state.busy) return;
-    await reviewRefresh();
-    var d = review.data; if (!d) return;
-    var seen = {}, clips = d.clips.filter(function (c) { if (seen[c.name]) return false; seen[c.name] = true; return review.sscope === 'all' || (review.sscope === 'selected' ? c.selected : flagsFor(c.name).length); });
-    if (!clips.length) { setStatus('rstatus', review.sscope === 'selected' ? 'Select the graded clip in the timeline first.' : 'No matching clips.', 'warn'); return; }
-    state.busy = true; $('rsample').disabled = true;
+    var seen = {}, clips = reviewClips().filter(function (c) { if (seen[c.name]) return false; seen[c.name] = true; return true; });
+    if (!clips.length) { setStatus('rstatus', review.filter === 'all' ? 'No clips in this sequence.' : 'Nothing flagged. Switch to All clips to save references for every clip.', 'warn'); return; }
+    state.busy = true; $('rref').disabled = true;
     try {
       var info = await jsx('lcInfo()'); state.info = info;
-      var all = await snapshot(), frame = Number(d.timebase), dir = stillsDir(), n = 0;
-      fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(HOME_DIR, { recursive: true });
+      var all = await snapshot(), frame = Number(d.timebase), dir = stillsDir(), meta = batchMeta(), n = 0, failed = 0;
+      var tmpDir = path.join(HOME_DIR, 'tmp'), thumbDir = path.join(learn.thumbs, stemOf(meta.key));
+      [dir, tmpDir, thumbDir].forEach(function (x) { fs.mkdirSync(x, { recursive: true }); });
       for (var i = 0; i < clips.length; i++) {
-        var c = clips[i], stem = stemOf(c.name) + '_SAMPLE';
-        setStatus('rstatus', 'Sampling ' + (i + 1) + ' of ' + clips.length + ' — ' + stemOf(c.name));
-        var mid = String(Math.round((Number(c.startTicks) + Number(c.endTicks)) / 2 / frame) * frame);
-        var st = await evalJsx('lcStill(' + q(mid) + ',' + q(path.join(dir, stem)) + ')');
-        var img = [stem + '.png', stem + '.jpg', stem].map(function (f) { return path.join(dir, f); }).filter(function (f) { return fs.existsSync(f); })[0] || '';
-        var g = all[c.name] || {}, cam = (stemOf(c.name).match(/^([A-Za-z]+\d*)/) || ['', ''])[1].toUpperCase();
-        var entry = { date: new Date().toISOString(), client: state.client ? state.client.name : path.basename(info.projectPath, '.prproj').replace(/_GRADED$/, ''),
-          ac: state.client ? state.client.ac : false, clip: c.name, camera: cam, sequence: d.sequence, lumetri: g.lumetri || null,
-          skin: g.skin || null, green: g.green || null, image: img, note: $('rnote').value.trim() || 'graded by hand, kept as a sample' };
-        fs.appendFileSync(SAMPLES_FILE, JSON.stringify(entry) + '\n');
-        if (/^OK/.test(st)) n++;
-        log('sample ' + c.name + ' -> ' + SAMPLES_FILE);
+        var c = clips[i], stem = stemOf(c.name);
+        setStatus('rstatus', 'Grade reference ' + (i + 1) + ' of ' + clips.length + ' — ' + stem);
+        var mid = String(Math.round((Number(c.startTicks) + Number(c.endTicks)) / 2 / frame) * frame), raw = path.join(tmpDir, stem);
+        var st = await evalJsx('lcStill(' + q(mid) + ',' + q(raw) + ')');
+        var src = [raw + '.png', raw + '.jpg', raw].filter(function (f) { return fs.existsSync(f); })[0];
+        var image = path.join(dir, stem + '_REF.jpg'), thumb = path.join(thumbDir, stem + '.jpg');
+        var okImg = src ? await sips(src, image, 1920, 82) : false, okThumb = src ? await sips(src, thumb, 320, 70) : false;
+        if (src) { try { fs.unlinkSync(src); } catch (e1) {} }
+        if (!/^OK/.test(st) || !okImg) { failed++; continue; }
+        var g = all[c.name] || {}, cam = (stem.match(/^([A-Za-z]+\d*)/) || ['', ''])[1].toUpperCase();
+        learn.addReference(meta, { clip: c.name, camera: cam, sequence: d.sequence, lumetri: g.lumetri || null, skin: g.skin || null, green: g.green || null,
+          cut: g.cut || null, image: image, thumb: okThumb ? thumb : '', date: new Date().toISOString() });
+        n++;
       }
-      setStatus('rstatus', plural(clips.length) + ' kept as grade samples (' + n + ' images in Final Output / Stills). Claude reads them on the next client.', 'ok');
-    } catch (e) { setStatus('rstatus', 'Could not take the sample: ' + e.message, 'bad'); }
-    state.busy = false; $('rsample').disabled = false;
+      setStatus('rstatus', n + ' grade reference' + (n === 1 ? '' : 's') + ' saved (values + image in Final Output / Stills)' + (failed ? ' · ' + failed + ' failed' : '') + '.', failed ? 'warn' : 'ok');
+    } catch (e) { setStatus('rstatus', 'Could not save the reference: ' + e.message, 'bad'); }
+    state.busy = false; $('rref').disabled = false; renderLearnInfo();
   });
   $('ropen').addEventListener('click', function () { var dir = stillsDir(); if (dir) cp.execFile('/usr/bin/open', [fs.existsSync(dir) ? dir : path.dirname(dir)]); });
 
-  // ---------------- Review ✓: what changed after the build / last review, remembered for next time ----------------
+  // ---------------- Final check & save learning ----------------
+  // Baseline = the state right after the build (or the last saved review). First click: compare and show the changes.
+  // Second click: keep them as one batch in the learning store (rolling, last N batches) and move the baseline forward.
   var LUM_NAMES = { temperature: 'Temperature', tint: 'Tint', saturation: 'Saturation', exposure: 'Exposure', contrast: 'Contrast', highlights: 'Highlights', shadows: 'Shadows', whites: 'Whites', blacks: 'Blacks' };
-  var rv = { changes: null, current: null };
+  var rv = { changes: null, current: null, at: 0 };
   function baselineFile() { return state.info && state.info.open ? path.join(path.dirname(state.info.projectPath), 'luma_baseline.json') : ''; }
   function reviewLogFile() { return state.info && state.info.open ? path.join(path.dirname(state.info.projectPath), 'luma_review_log.json') : ''; }
   async function snapshot() {
     await evalJsx('lcSave()');
     var lum = await jsx('lcAllGrades()');
     if (lum.error) throw new Error(lum.error);
+    var cuts = await jsx('lcAllCuts()'); if (cuts.error) cuts = {};
     var cm = {}; try { cm = CM.readAll(CM.load(state.info.projectPath)); } catch (e) {}
     var clips = {};
-    Object.keys(lum).forEach(function (n) { clips[n] = { lumetri: lum[n], skin: cm[n] ? cm[n].skin : { hue: 0, sat: 0, lum: 0 }, green: cm[n] ? cm[n].green : { hue: 0, sat: 0, lum: 0 } }; });
+    Object.keys(lum).forEach(function (n) { clips[n] = { lumetri: lum[n], skin: cm[n] ? cm[n].skin : { hue: 0, sat: 0, lum: 0 }, green: cm[n] ? cm[n].green : { hue: 0, sat: 0, lum: 0 }, cut: cuts[n] || null }; });
     return clips;
   }
   async function writeBaseline(by) {
     var info = await jsx('lcInfo()'); if (!info.open) return;
     state.info = info;
     var clips = await snapshot();
-    fs.writeFileSync(baselineFile(), JSON.stringify({ updatedAt: new Date().toISOString(), by: by, clips: clips }, null, 1));
+    var tmp = baselineFile() + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ updatedAt: new Date().toISOString(), by: by, clips: clips }, null, 1)); fs.renameSync(tmp, baselineFile());
   }
   function diff(base, cur) {
     var out = [];
@@ -936,75 +899,91 @@
           if (Math.abs(y - x) >= 0.05) items.push({ area: part === 'skin' ? 'Skin' : 'Green screen', field: k.charAt(0).toUpperCase() + k.slice(1) + ' Shift', from: x, to: y });
         });
       });
-      if (items.length) out.push({ clip: n, camera: n.replace(/\.[^.]+$/, '').match(/^([A-Za-z]+\d*)/) ? n.replace(/\.[^.]+$/, '').match(/^([A-Za-z]+\d*)/)[1].toUpperCase() : '', items: items });
+      if (b.cut && c.cut) {
+        if (Math.abs(c.cut['in'] - b.cut['in']) >= 0.03) items.push({ area: 'Trim', field: 'IN', from: b.cut['in'], to: c.cut['in'], unit: 's' });
+        if (Math.abs(c.cut.out - b.cut.out) >= 0.03) items.push({ area: 'Trim', field: 'OUT', from: b.cut.out, to: c.cut.out, unit: 's' });
+      }
+      var cam = n.replace(/\.[^.]+$/, '').match(/^([A-Za-z]+\d*)/);
+      if (items.length) out.push({ clip: n, camera: cam ? cam[1].toUpperCase() : '', items: items });
     });
     return out;
   }
   function sign(v) { v = Math.round(v * 100) / 100; return (v > 0 ? '+' : '') + v; }
-  function showBaseInfo() {
-    var f = baselineFile(), b = f ? readJson(f) : null;
-    $('rbase').textContent = b ? 'since ' + (b.by === 'review' ? 'last review' : 'build') + ' · ' + new Date(b.updatedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'not tracking yet';
-    $('rbaseline').hidden = !!b || !(state.info && state.info.open);
+  function kb(n) { return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+  function renderLearnInfo() {
+    var s = learn.load(), last = learn.lastReview(), used = learn.usage();
+    var b = state.info && state.info.open ? readJson(baselineFile()) : null;
+    $('rbase').textContent = b ? 'since ' + (b.by === 'review' ? 'last review' : 'build') + ' · ' + new Date(b.updatedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'no baseline yet';
+    $('rlearn').textContent = s.batches.length + ' of ' + s.retention + ' batches kept · ' + kb(used) + ' of ' + kb(s.maxBytes) + ' · ' + learn.activeRules().length + ' active rules' +
+      (last ? ' · last review ' + last.client + ', ' + new Date(last.date).toLocaleDateString([], { day: 'numeric', month: 'short' }) : '');
+    // About
+    $('aretention').value = String(s.retention);
+    $('ausage').textContent = kb(used) + ' of ' + kb(s.maxBytes) + ' · ' + s.batches.length + ' batch' + (s.batches.length === 1 ? '' : 'es') + ' · ' + learn.activeRules().length + ' active rules';
+    $('apath').textContent = learn.dir;
   }
-  $('rbaseline').addEventListener('click', async function () {
-    try { await writeBaseline('review'); setStatus('rstatus', 'Tracking changes from now on.', 'ok'); } catch (e) { setStatus('rstatus', 'Could not start tracking: ' + e.message, 'bad'); }
-    showBaseInfo();
-  });
-  $('rcheck').addEventListener('click', async function () {
+  function finalLabel() {
+    var armed = rv.changes && rv.changes.length && Date.now() - rv.at < 10 * 60 * 1000;
+    $('rfinal').textContent = armed ? 'Save learning · ' + rv.changes.reduce(function (a, c) { return a + c.items.length; }, 0) + ' changes on ' + plural(rv.changes.length) : 'Final check & save learning';
+    $('rfinal').className = 'primary' + (armed ? ' confirm' : '');
+    return armed;
+  }
+  function clearFinal() { rv.changes = null; $('rchanges').hidden = true; $('rnote').hidden = true; finalLabel(); }
+  $('rfinal').addEventListener('click', async function () {
     if (state.busy) return;
     var info = await jsx('lcInfo()'); if (!info.open) { setStatus('rstatus', 'Open the client project first.', 'warn'); return; }
-    state.info = info; showBaseInfo();
+    state.info = info;
+    if (finalLabel()) return saveLearning();
     var base = readJson(baselineFile());
-    if (!base) { setStatus('rstatus', 'Nothing to compare yet. Press Start tracking from here, then make your changes.', 'warn'); return; }
-    setStatus('rstatus', 'Reading the grade…');
-    try { rv.current = await snapshot(); } catch (e) { setStatus('rstatus', 'Could not read the grade: ' + e.message, 'bad'); return; }
-    rv.changes = diff(base.clips, rv.current);
-    var box = $('rchanges'); box.innerHTML = '';
-    if (!rv.changes.length) {
-      box.hidden = true; $('rnote').hidden = true; $('rconfirmrow').hidden = true;
-      setStatus('rstatus', 'No changes since the ' + (base.by === 'review' ? 'last review' : 'build') + '.', 'ok'); return;
+    if (!base) {
+      try { await writeBaseline('review'); } catch (e) { setStatus('rstatus', 'Could not read the project: ' + e.message, 'bad'); return; }
+      setStatus('rstatus', 'This project had no baseline (built before tracking). Tracking starts now: make your changes, then run Final check again.', 'warn');
+      renderLearnInfo(); return;
     }
+    state.busy = true; $('rfinal').disabled = true; setStatus('rstatus', 'Comparing with the ' + (base.by === 'review' ? 'last review' : 'build') + '…');
+    try { rv.current = await snapshot(); } catch (e) { state.busy = false; $('rfinal').disabled = false; setStatus('rstatus', 'Could not read the grade: ' + e.message, 'bad'); return; }
+    state.busy = false; $('rfinal').disabled = false;
+    rv.changes = diff(base.clips, rv.current); rv.at = Date.now();
+    var box = $('rchanges'); box.innerHTML = '';
+    if (!rv.changes.length) { clearFinal(); setStatus('rstatus', 'No changes since the ' + (base.by === 'review' ? 'last review' : 'build') + ': nothing new to learn.', 'ok'); return; }
     rv.changes.forEach(function (c) {
       var row = document.createElement('div'); row.className = 'c';
       row.innerHTML = '<span class="n"></span><span class="muted"></span><span class="d"></span>';
       row.children[0].textContent = c.clip; row.children[1].textContent = c.items.length + (c.items.length === 1 ? ' change' : ' changes');
-      row.children[2].innerHTML = c.items.map(function (it) { return it.area + ' ' + it.field + ' <b>' + sign(it.to - it.from) + '</b> (' + sign(it.from) + ' → ' + sign(it.to) + ')'; }).join(' · ');
+      row.children[2].innerHTML = c.items.map(function (it) { var u = it.unit || ''; return it.area + ' ' + it.field + ' <b>' + sign(it.to - it.from) + u + '</b> (' + sign(it.from) + u + ' → ' + sign(it.to) + u + ')'; }).join(' · ');
       box.appendChild(row);
     });
-    box.hidden = false; $('rnote').hidden = false; $('rconfirmrow').hidden = false;
-    var total = rv.changes.reduce(function (a, c) { return a + c.items.length; }, 0);
-    setStatus('rstatus', total + ' changes on ' + plural(rv.changes.length) + '. Add a note, then confirm.');
+    box.hidden = false; $('rnote').hidden = false; finalLabel();
+    setStatus('rstatus', 'Check the list, add a note if useful, then press Save learning.');
   });
-  $('rconfirm').addEventListener('click', async function () {
-    if (!rv.changes || !rv.changes.length || state.busy) return;
-    var entry = {
-      date: new Date().toISOString(), client: state.client ? state.client.name : path.basename(state.info.projectPath, '.prproj').replace(/_GRADED$/, ''),
-      ac: state.client ? state.client.ac : /(^|[^A-Za-z])AC\s*#?\s*\d+/i.test(state.info.projectPath), project: state.info.projectPath,
-      reviewer: os.userInfo().username, note: $('rnote').value.trim(), changes: rv.changes
-    };
+  async function saveLearning() {
+    var meta = batchMeta(), note = $('rnote').value.trim(), changes = rv.changes;
     try {
-      var log = readJson(reviewLogFile()) || []; log.push(entry);
-      fs.writeFileSync(reviewLogFile(), JSON.stringify(log, null, 1));
-      fs.mkdirSync(HOME_DIR, { recursive: true });
-      fs.appendFileSync(MEMORY_FILE, JSON.stringify(entry) + '\n');
-      fs.writeFileSync(baselineFile(), JSON.stringify({ updatedAt: entry.date, by: 'review', clips: rv.current }, null, 1));
-    } catch (e) { setStatus('rstatus', 'Could not save the review: ' + e.message, 'bad'); return; }
-    var msg = 'Review saved: ' + plural(rv.changes.length) + ', remembered for the next client.';
-    if ($('rimages').checked) {
-      await reviewRefresh();
-      var d = review.data, changed = {};
-      rv.changes.forEach(function (c) { changed[c.clip] = true; });
-      var seen = {}, clips = d ? d.clips.filter(function (c) { if (seen[c.name] || !changed[c.name]) return false; seen[c.name] = true; return true; }) : [];
-      if (clips.length) {
-        state.busy = true;
-        try { var r = await saveImages(clips, Number(d.timebase), '_review'); msg += ' ' + r.saved + ' images in Final Output / Stills.'; } catch (e) {}
-        state.busy = false;
-      }
-      if (d && clips.length < rv.changes.length) msg += ' Images only for ' + d.sequence + '.';
-    }
-    rv.changes = null; $('rchanges').hidden = true; $('rnote').hidden = true; $('rnote').value = ''; $('rconfirmrow').hidden = true;
-    setStatus('rstatus', msg, 'ok'); showBaseInfo();
+      var r = learn.addReview(meta, changes, note, os.userInfo().username);
+      var logf = readJson(reviewLogFile()) || []; logf.push({ date: new Date().toISOString(), note: note, changes: changes });
+      fs.writeFileSync(reviewLogFile(), JSON.stringify(logf.slice(-20), null, 1));
+      var tmp = baselineFile() + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify({ updatedAt: new Date().toISOString(), by: 'review', clips: rv.current }, null, 1)); fs.renameSync(tmp, baselineFile());
+      $('rnote').value = ''; clearFinal();
+      setStatus('rstatus', 'Learning saved for ' + meta.client + ': ' + plural(changes.length) + '. Keeping the last ' + learn.load().retention + ' batches' + (r.dropped ? ' (' + r.dropped + ' older removed)' : '') + ' · ' + r.active + ' active rules.', 'ok');
+    } catch (e) { setStatus('rstatus', 'Could not save the learning: ' + e.message, 'bad'); }
+    renderLearnInfo();
+  }
+
+  // ---------------- About: learning storage ----------------
+  $('aretention').addEventListener('change', function () {
+    var n = parseInt($('aretention').value, 10), dropped = 0;
+    try { dropped = learn.setRetention(n); } catch (e) {}
+    $('astatus').textContent = 'Keeping the last ' + n + ' batch' + (n === 1 ? '' : 'es') + (dropped ? '; ' + dropped + ' older removed.' : '.');
+    renderLearnInfo();
   });
+  var resetArmed = 0;
+  $('areset').addEventListener('click', function () {
+    if (!(resetArmed && Date.now() - resetArmed < 4000)) { resetArmed = Date.now(); $('areset').textContent = 'Click again to erase all learning'; $('areset').className = 'danger'; setTimeout(function () { $('areset').textContent = 'Reset learning…'; $('areset').className = ''; resetArmed = 0; }, 4000); return; }
+    resetArmed = 0; $('areset').textContent = 'Reset learning…'; $('areset').className = '';
+    try { var bk = learn.reset(); $('astatus').textContent = 'Learning erased. A backup was kept: ' + path.basename(bk); } catch (e) { $('astatus').textContent = 'Reset failed: ' + e.message; }
+    renderLearnInfo();
+  });
+  $('aopen').addEventListener('click', function () { fs.mkdirSync(learn.dir, { recursive: true }); cp.execFile('/usr/bin/open', [learn.dir]); });
 
   // ---------------- project panel: S-log columns by default ----------------
   // Set once per project per session when a client project is open (the build sets them too). No button, no save.
