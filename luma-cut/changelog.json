@@ -2,6 +2,22 @@
  "panel": "UAI Luma Cut",
  "entries": [
   {
+   "version": "1.9.0",
+   "date": "2026-11-25T17:45",
+   "changes": [
+    {
+     "what": "Build › Proxies",
+     "before": "4K–8K footage (8K HEVC 4:2:2 above all) played back choppy; proxies had to be made by hand in Media Encoder and attached clip by clip",
+     "now": "Make proxies: a 1080p ProRes Proxy for every 4K+ clip in the open project, made on Apple's media engines, saved in the client's Proxies folder, attached and switched on; exports still use the originals"
+    },
+    {
+     "what": "Build › Proxies › Auto",
+     "before": "—",
+     "now": "on by default: clips dropped into any project, or imported by a build, get their proxy by themselves (checked every 20 s)"
+    }
+   ]
+  },
+  {
    "version": "1.8.2",
    "date": "2026-11-25T16:20",
    "changes": [

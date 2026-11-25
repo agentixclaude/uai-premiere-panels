@@ -63,6 +63,14 @@
     <div id="duplist" class="dupes"></div>
   </section>
 
+  <section>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 12h4m10 0h4"/></svg><span>Proxies</span>
+      <button id="pxauto" class="switch end" title="Make proxies by itself whenever 4K–8K clips without one are in the open project"><i></i>Auto</button></div>
+    <div class="row spread"><span id="pxstate" class="muted">Not checked yet</span><button id="pxmake">Make proxies</button></div>
+    <div class="progress" id="pxprogress" hidden><div></div></div>
+    <div class="note">1080p ProRes Proxy copies of 4K–8K clips, saved in the client's Proxies folder. Premiere plays them while you edit; exports always use the originals.</div>
+  </section>
+
   <section class="grow">
     <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span>All sequences</span><span class="end">built together</span></div>
     <div class="list" id="clips"><div class="empty">Choose a client folder to see its clips.</div></div>

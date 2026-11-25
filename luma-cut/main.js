@@ -13,6 +13,7 @@
   var CM = nodeReq(path.join(EXT_DIR, 'lib', 'colormode.js'));
   var DUPES = nodeReq(path.join(EXT_DIR, 'lib', 'dupes.js'));
   var LEARN = nodeReq(path.join(EXT_DIR, 'lib', 'learning.js'));
+  var PROXY = nodeReq(path.join(EXT_DIR, 'lib', 'proxies.js'));
   var CM_TEMPLATE = path.join(EXT_DIR, 'lib', 'colormode_template.json');
   var HOME_DIR = path.join(os.homedir(), 'UAI Luma Cut');
   var MEMORY_FILE = path.join(HOME_DIR, 'grade_memory.jsonl');
@@ -447,6 +448,105 @@
   }
   $('build').addEventListener('click', build);
   $('dupcheck').addEventListener('click', function () { if (!state.busy) checkDupes(false); });
+
+  // ---------------- proxies: 1080p ProRes Proxy for 4K–8K clips, attached in Premiere ----------------
+  var px = { busy: false, auto: load('lc:pxauto') !== '0', job: null, stop: false, sizes: {}, failed: {}, need: [], heavy: 0, enabled: true, open: false, msg: '' };
+  function pxClientDir(info) { return info && info.projectPath ? clientDirOf(info.projectPath) : (state.client ? state.client.dir : null); }
+  function pxProbe(ffprobe, media) {
+    if (px.sizes[media] !== undefined) return Promise.resolve(px.sizes[media]);
+    return new Promise(function (resolve) { PROXY.probe(ffprobe, media, function (info) { px.sizes[media] = info; resolve(info); }); });
+  }
+  // reads the open project: which 4K+ clips still need a proxy (one encode per media file, attached to every clip using it)
+  async function pxScan() {
+    var r = await jsx('lcProxyList()');
+    px.open = !!r.open; px.need = []; px.heavy = 0; px.enabled = !!r.enabled;
+    if (r.error || !r.open || !state.ffmpeg) return;
+    var ffprobe = PROXY.ffprobeFor(state.ffmpeg); if (!ffprobe) return;
+    var info = state.info && state.info.open ? state.info : await jsx('lcInfo()');
+    var clientDir = pxClientDir(info), byMedia = {};
+    (r.items || []).forEach(function (it) {
+      if (!VIDEO_RE.test(it.media)) return;
+      var m = byMedia[it.media] || (byMedia[it.media] = { media: it.media, name: it.name, ids: [], missing: [] });
+      m.ids.push(it.id); if (!it.has) m.missing.push(it.id);
+    });
+    for (var media in byMedia) {
+      if (!fs.existsSync(media)) continue;                              // offline media: nothing to read
+      var size = await pxProbe(ffprobe, media);
+      if (!PROXY.isHeavy(size)) continue;
+      px.heavy++;
+      var m = byMedia[media];
+      if (m.missing.length) px.need.push({ media: media, name: path.basename(media), ids: m.missing, info: size, out: PROXY.proxyPath(media, clientDir) });
+    }
+  }
+  function pxRender() {
+    var st = $('pxstate'), btn = $('pxmake');
+    $('pxauto').className = 'switch end' + (px.auto ? ' on' : '');
+    btn.textContent = px.busy ? 'Stop' : (!px.need.length && px.heavy && !px.enabled ? 'Show proxies' : 'Make proxies');
+    btn.disabled = !px.busy && (state.busy || !state.ffmpeg || !px.open || (!px.need.length && (px.enabled || !px.heavy)));
+    if (px.busy) return;                                                  // the job writes its own progress
+    if (!state.ffmpeg) { st.textContent = 'ffmpeg missing — install it with install.sh'; st.className = 'muted tone-warn'; return; }
+    if (!px.open) { st.textContent = 'Open a project to check its clips'; st.className = 'muted'; return; }
+    if (px.need.length) { st.textContent = px.need.length + ' of ' + px.heavy + ' 4K+ clip' + (px.heavy === 1 ? '' : 's') + ' need a proxy' + (px.msg ? ' · last run: ' + px.msg : ''); st.className = 'muted'; return; }
+    if (px.msg) { st.textContent = px.msg; st.className = 'muted'; return; }
+    st.textContent = px.heavy ? 'All ' + px.heavy + ' 4K+ clip' + (px.heavy === 1 ? ' has a proxy' : 's have proxies') + (px.enabled ? '' : ' · proxies are off') : 'No 4K+ clips in this project';
+    st.className = 'muted';
+  }
+  async function pxMake() {
+    if (px.busy || state.busy) return;
+    await pxScan();
+    if (!px.need.length) {
+      if (px.heavy && !px.enabled) { await evalJsx('lcProxyShow(1)'); px.enabled = true; }
+      pxRender(); return;
+    }
+    px.busy = true; px.stop = false; px.msg = ''; pxRender();
+    var list = px.need.filter(function (c) { return !px.failed[c.media]; }), made = 0, attached = 0, failed = [], bar = $('pxprogress');
+    bar.hidden = false;
+    for (var i = 0; i < list.length && !px.stop; i++) {
+      var c = list[i];
+      var show = function (f) {
+        $('pxstate').textContent = 'Proxy ' + (i + 1) + ' of ' + list.length + ' · ' + c.name + ' · ' + Math.round(f * 100) + '%';
+        bar.firstChild.style.width = Math.round(100 * (i + f) / list.length) + '%';
+      };
+      show(0);
+      if (!PROXY.hasFile(c.out)) {                                        // a proxy made earlier (same name) is reused
+        var err = await new Promise(function (resolve) { px.job = PROXY.encode(state.ffmpeg, c.media, c.out, c.info, show, resolve); });
+        px.job = null;
+        if (err) { if (!px.stop) { failed.push(c.name); px.failed[c.media] = true; log('proxy ' + c.media + ': ' + err.message); } continue; }
+        made++;
+      }
+      for (var k = 0; k < c.ids.length; k++) {
+        var a = await evalJsx('lcProxyAttach(' + q(c.ids[k]) + ',' + q(c.out) + ')');
+        if (a === 'OK') attached++; else { failed.push(c.name); log('proxy attach ' + c.out + ': ' + a); }
+      }
+    }
+    if (attached) { await evalJsx('lcProxyShow(1)'); await evalJsx('lcSave()'); }
+    bar.firstChild.style.width = '100%'; setTimeout(function () { bar.hidden = true; }, 1200);
+    px.msg = (px.stop ? 'Stopped · ' : '') + (made ? made + ' made · ' : '') + attached + ' attached' + (failed.length ? ' · failed: ' + failed.join(', ') : '') + (attached ? ' · proxies on, project saved' : '');
+    px.busy = false;
+    await pxScan();
+    pxRender();
+  }
+  $('pxmake').addEventListener('click', function () {
+    if (px.busy) { px.stop = true; if (px.job) px.job.cancel(); $('pxstate').textContent = 'Stopping…'; return; }
+    px.msg = ''; px.failed = {}; pxMake();
+  });
+  $('pxauto').addEventListener('click', function () {
+    px.auto = !px.auto; store('lc:pxauto', px.auto ? '1' : '0'); pxRender();
+    if (px.auto) pxTick();
+  });
+  // Auto: watch the open project (clips dropped in by hand, or a build) and start as soon as a 4K+ clip has no proxy
+  var pxTicking = false;
+  async function pxTick() {
+    if (pxTicking || px.busy || state.busy || (typeof grade !== 'undefined' && grade.busy)) return;
+    pxTicking = true;
+    try {
+      await pxScan();
+      if (px.auto && !state.busy && px.need.some(function (c) { return !px.failed[c.media]; })) { pxTicking = false; return pxMake(); }
+      pxRender();
+    } catch (e) { log('proxy check: ' + e.message); }
+    pxTicking = false;
+  }
+  setInterval(pxTick, 20000);
   $('newproj').addEventListener('click', async function () {
     var c = state.client; if (!c || state.busy) return;
     fs.mkdirSync(c.projDir, { recursive: true });
@@ -495,6 +595,7 @@
     var eng = fs.existsSync(path.join(ENGINE_DIR, 'luma_plan.py'));
     $('enginestate').textContent = eng ? 'Claude engine installed' : 'Claude engine missing (run install.sh)';
     $('enginestate').className = 'chip' + (eng ? ' ok' : ' warn');
+    pxTick();
   }
   $('refresh').addEventListener('click', function () { if (state.client) { scanClips(); } refresh(); refreshTab(); });
 

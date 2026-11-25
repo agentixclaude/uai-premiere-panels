@@ -1,7 +1,7 @@
 <p align="center"><img src=".github/assets/banner.jpg" alt="UAI Premiere panels for the edit team" width="100%"></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Luma%20Cut-1.8.2-fa914f?style=flat-square" alt="Luma Cut 1.8.2">
+  <img src="https://img.shields.io/badge/Luma%20Cut-1.9.0-fa914f?style=flat-square" alt="Luma Cut 1.9.0">
   <img src="https://img.shields.io/badge/Smart%20Export-1.8.1-fa914f?style=flat-square" alt="Smart Export 1.8.1">
   <img src="https://img.shields.io/badge/Arena%20Hub-0.6.1-4f8cff?style=flat-square" alt="Arena Hub 0.6.1">
   <img src="https://img.shields.io/badge/Premiere%20MCP-1.31.0-3a3a3f?style=flat-square" alt="Premiere MCP 1.31.0">
@@ -35,6 +35,9 @@
 | **Premiere MCP** | Lets Claude read and drive Premiere (timelines, clips, effects, exports). Team-tested version, one installer. | [`mcp/`](mcp/) |
 
 ## What's new
+**Luma Cut 1.9.0** · 2026-11-25 17:45
+- **Proxies** — Build › Proxies: 1080p ProRes Proxy for every 4K–8K clip, attached and switched on. **Auto** (on by default) does it for every project by itself. Exports still use the originals
+
 **Luma Cut 1.8.2** · 2026-11-25 16:20
 - **How to use** — About › How to use: the 8 steps from client folder to verified export. Same steps on GitHub: [Start a client](docs/how-to-start.md)
 

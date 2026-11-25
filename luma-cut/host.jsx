@@ -554,3 +554,52 @@ function uaiHistory(dir) {
         return 'OK:' + (before === null || after === null ? '?' : Math.abs(after - before));
     } catch (e) { return 'ERR:' + e.toString(); }
 }
+
+// ---------------- Proxies ----------------
+// Every clip in the project that points at a media file, in every bin, with whether a proxy is attached.
+function lcProxyList() {
+    try {
+        if (!app.project || !app.project.path) { return '{"open":false}'; }
+        var out = [], stack = [app.project.rootItem];
+        while (stack.length) {
+            var bin = stack.pop();
+            for (var i = 0; i < bin.children.numItems; i++) {
+                var it = bin.children[i];
+                if (it.type === ProjectItemType.BIN) { stack.push(it); continue; }
+                if (it.type !== ProjectItemType.CLIP) { continue; }
+                var media = '', has = false;
+                try { media = it.getMediaPath(); } catch (e1) {}
+                if (!media) { continue; }
+                try { has = it.hasProxy(); } catch (e2) {}
+                out.push('{"id":"' + lcEsc(it.nodeId) + '","name":"' + lcEsc(it.name) + '","media":"' + lcEsc(media) + '","has":' + (has ? 'true' : 'false') + '}');
+            }
+        }
+        var on = false;
+        try { on = !!app.getEnableProxies(); } catch (e3) {}
+        return '{"open":true,"enabled":' + (on ? 'true' : 'false') + ',"items":[' + out.join(',') + ']}';
+    } catch (e) { return lcErr(e); }
+}
+function lcFindItem(nodeId) {
+    var stack = [app.project.rootItem];
+    while (stack.length) {
+        var bin = stack.pop();
+        for (var i = 0; i < bin.children.numItems; i++) {
+            var it = bin.children[i];
+            if (it.nodeId === nodeId) { return it; }
+            if (it.type === ProjectItemType.BIN) { stack.push(it); }
+        }
+    }
+    return null;
+}
+function lcProxyAttach(nodeId, proxyPath) {
+    try {
+        var it = lcFindItem(nodeId);
+        if (!it) { return 'ERR:clip is no longer in the project'; }
+        it.attachProxy(proxyPath, 0);
+        return it.hasProxy() ? 'OK' : 'ERR:Premiere did not accept the proxy';
+    } catch (e) { return 'ERR:' + e.toString(); }
+}
+// on: 1 shows proxies in every monitor (app-wide), 0 shows the originals
+function lcProxyShow(on) {
+    try { app.setEnableProxies(on ? 1 : 0); return app.getEnableProxies() ? 'OK:1' : 'OK:0'; } catch (e) { return 'ERR:' + e.toString(); }
+}
