@@ -53,5 +53,5 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "lumacut" ]; then
 fi
 
 # Premiere only loads unsigned panels when Adobe's panel developer mode is on.
-for v in 9 10 11 12 13; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
+for v in 9 10 11 12 13 14 15 16; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
 echo "Restart Premiere Pro, then open the panels from Window > Extensions."

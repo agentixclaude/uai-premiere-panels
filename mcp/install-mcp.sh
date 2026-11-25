@@ -12,10 +12,12 @@ say() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 say "MCP for Adobe Premiere Pro — installing v$VERSION"
 
 # 1. Homebrew, Node 20.19+ and ffmpeg (ffmpeg is used for trims, slips and frame checks)
-if ! command -v brew >/dev/null 2>&1; then
+# Find brew even when its "Next steps" PATH lines were never run
+BREW="$(command -v brew || ls /opt/homebrew/bin/brew /usr/local/bin/brew 2>/dev/null | head -1 || true)"
+if [ -z "$BREW" ]; then
   echo "Homebrew is missing. Install it first: https://brew.sh — then run this again."; exit 1
 fi
-eval "$(brew shellenv)"
+eval "$("$BREW" shellenv)"
 NODE_OK=0
 if command -v node >/dev/null 2>&1; then
   node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>20||(a===20&&b>=19)?0:1)' && NODE_OK=1
@@ -25,28 +27,48 @@ command -v ffmpeg >/dev/null 2>&1 || { say "Installing ffmpeg"; brew install ffm
 
 # 2. The MCP server, pinned to the team version
 say "Installing premiere-pro-mcp@$VERSION"
-npm install -g "premiere-pro-mcp@$VERSION"
-BIN="$(command -v premiere-pro-mcp)"
+# A Node from nodejs.org puts npm's global folder in /usr/local (root-owned) → EACCES.
+# In that case use Homebrew's own Node/npm, which installs globals without sudo.
+NPM="$(command -v npm)"
+# Node was just installed by Homebrew: use its npm, not an older one (nvm etc.) earlier on PATH
+[ "$NODE_OK" = 1 ] || NPM="$(brew --prefix)/bin/npm"
+if [ ! -w "$("$NPM" prefix -g)/lib" ] && [ ! -w "$("$NPM" prefix -g)" ]; then
+  say "npm's global folder is not writable, using Homebrew's Node instead"
+  brew list node >/dev/null 2>&1 || brew install node
+  NPM="$(brew --prefix)/bin/npm"
+fi
+"$NPM" install -g "premiere-pro-mcp@$VERSION"
+BIN="$("$NPM" prefix -g)/bin/premiere-pro-mcp"
+[ -x "$BIN" ] || BIN="$(command -v premiere-pro-mcp || true)"
 [ -n "$BIN" ] || { echo "premiere-pro-mcp did not install."; exit 1; }
 
 # 3. The Premiere connector panel (CEP) + debug mode for unsigned panels
 say "Installing the Premiere connector"
-for v in 9 10 11 12 13; do defaults write com.adobe.CSXS.$v PlayerDebugMode 1; done
+for v in 9 10 11 12 13 14 15 16; do defaults write com.adobe.CSXS.$v PlayerDebugMode 1; done
 "$BIN" --install-cep
 
 # 4. Claude Desktop entry (backs up the config first; keeps every other server)
+# Claude Desktop starts servers with a bare PATH (/usr/bin:/bin), so the npm shim's
+# "#!/usr/bin/env node" fails there ("Server disconnected"). Point it at node + the script directly.
+NODE="$(dirname "$NPM")/node"
+[ -x "$NODE" ] || NODE="$(command -v node)"
+ENTRY="$("$NPM" root -g)/premiere-pro-mcp/dist/index.js"
+[ -f "$ENTRY" ] || { echo "Could not find $ENTRY"; exit 1; }
 CFG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 mkdir -p "$(dirname "$CFG")"
 [ -f "$CFG" ] && cp "$CFG" "$CFG.bak-$(date +%Y%m%d-%H%M%S)"
-python3 - "$CFG" "$BIN" <<'PY'
+python3 - "$CFG" "$NODE" "$ENTRY" <<'PY'
 import json, os, sys
-cfg, binpath = sys.argv[1], sys.argv[2]
+cfg, node, entry = sys.argv[1], sys.argv[2], sys.argv[3]
 data = {}
 if os.path.exists(cfg) and os.path.getsize(cfg):
-    with open(cfg) as f: data = json.load(f)
-data.setdefault("mcpServers", {})["premiere-pro"] = {"command": binpath, "args": [], "env": {}}
+    try:
+        with open(cfg) as f: data = json.load(f)
+    except ValueError as e:
+        sys.exit("claude_desktop_config.json is not valid JSON (%s). Fix it or restore a .bak copy, then run this again." % e)
+data.setdefault("mcpServers", {})["premiere-pro"] = {"command": node, "args": [entry], "env": {}}
 with open(cfg, "w") as f: json.dump(data, f, indent=2)
-print("Claude Desktop: premiere-pro ->", binpath)
+print("Claude Desktop: premiere-pro ->", node, entry)
 PY
 
 # 5. Local check (reads no project)
