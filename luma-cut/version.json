@@ -1,1 +1,1 @@
-{"version": "1.8.0", "notes": "Trim v2 everywhere: Standalone now trims by face + transcript (when the engine packages are installed) and starts from learned grade priors; Claude-mode engine updated"}
+{"version": "1.8.1", "notes": "Trim v2 everywhere (Standalone face trim, priors); engine: count-in ignored"}

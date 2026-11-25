@@ -74,6 +74,12 @@ def script_bounds(p, dur):
     for i in range(len(tail)):
         if norm(tail[i]) == 'cut' and i > 0:
             dropped_tail.append(' '.join(w['w'] for w in tail[i:])); tail_next = tail[i]['s']; tail = tail[:i]; break
+    # count-in said in one breath with the take ("three, two, one, <first line>"): descending numbers, at least two
+    NUM = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10}
+    k = 0
+    while k < len(head) - 1 and norm(head[k]) in NUM and (k == 0 or NUM[norm(head[k])] < NUM[norm(head[k - 1])]): k += 1
+    if k >= 2:
+        dropped_head.append(' '.join(w['w'] for w in head[:k])); head_prev = head[k - 1]['e']; head = head[k:]
     hg, tg = _groups(head), _groups(tail)
     # leading / trailing phrases that are cues or a word or two, set apart by a gap
     while len(hg) > 1 and (HEAD_CUES.search(_text(hg[0])) and len(hg[0]) <= 6 or len(hg[0]) <= 2):

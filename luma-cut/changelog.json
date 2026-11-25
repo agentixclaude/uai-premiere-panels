@@ -2,6 +2,17 @@
  "panel": "UAI Luma Cut",
  "entries": [
   {
+   "version": "1.8.1",
+   "date": "2026-11-25T13:45",
+   "changes": [
+    {
+     "what": "Trim engine",
+     "before": "a spoken count-in (\"three, two, one\") counted as part of the take",
+     "now": "descending count-ins are ignored and flagged on the clip; a start that moves by more than 0.1 s after ignoring talk is applied"
+    }
+   ]
+  },
+  {
    "version": "1.8.0",
    "date": "2026-11-25T13:20",
    "changes": [

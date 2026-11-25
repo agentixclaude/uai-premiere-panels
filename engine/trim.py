@@ -263,7 +263,7 @@ def run(p, out):
     T['transcript'] = round(time.time() - t_, 1)
     if tb:
         res['transcript'] = tb
-        if tb['dropped_head'] and tb['start'] > sb['start'] + 0.5:    # talk before the first line: start later, treat it as a sound to avoid
+        if tb['dropped_head'] and tb['start'] > sb['start'] + 0.1:    # talk before the first line: start later, treat it as a sound to avoid
             if tb['head_prev'] is not None: sb['prev_sound'] = max(sb.get('prev_sound') or 0, tb['head_prev'])
             sb['start'] = tb['start']
         if tb['dropped_tail'] and tb['end'] < sb['end'] - 0.5:        # talk after the last line: end earlier, the chatter becomes the next sound
