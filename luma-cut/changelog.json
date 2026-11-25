@@ -2,13 +2,44 @@
  "panel": "UAI Luma Cut",
  "entries": [
   {
+   "version": "1.8.0",
+   "date": "2026-11-25T13:20",
+   "changes": [
+    {
+     "what": "Trim (Standalone)",
+     "before": "audio only: first and last sound",
+     "now": "same engine as Claude mode when its packages are installed: transcript (slates and crew talk ignored) + audio + face (frontal, still, mouth closed, eyes open), 10 s look-back, OUT 0.5 s earlier; audio trim stays as the fallback"
+    },
+    {
+     "what": "Trim engine",
+     "before": "person did not move but no frame passed the strict test: IN/OUT jumped up to 7.6 s inside the talk",
+     "now": "best frame of the pause is used and flagged REVIEW; vertical 8K clips decode small (no out-of-memory); ffmpeg capped at 4 threads"
+    },
+    {
+     "what": "Grade start (Standalone)",
+     "before": "one house grade for every clip",
+     "now": "house grade plus learned priors per setup (office, green screen, outdoor), Exposure limited to ±0.6; Check light & colour sets the final values"
+    },
+    {
+     "what": "Plan (Claude mode)",
+     "before": "priors and the OUT rule added by hand per client",
+     "now": "built into the engine: priors once, OUT −0.5 s (never closer than 0.15 s after the last word), group per clip"
+    },
+    {
+     "what": "Installer",
+     "before": "no face-trim packages",
+     "now": "installs mediapipe + faster-whisper into ~/.lumacut_deps (optional, never blocks)"
+    }
+   ]
+  },
+  {
    "version": "1.7.0",
    "date": "2026-11-25T11:00",
    "changes": [
     {
-     "what": "Grade \u2192 Light check",
+     "what": "Grade → Light check",
      "before": "exposure and colour came from the plan or a fixed preset, never checked on the graded picture",
-     "now": "Check light & colour: exports each clip's graded frame, measures face brightness, highlights and skin colour, sets Exposure / Highlights / Temperature / Tint to match your approved grade references per setup, then re-measures (up to 3 rounds); outdoor VG keeps Temp \u22124\u2026+8, Tint \u22122\u2026+4"
+     "now": "Check light & colour: exports each clip's graded frame, measures face brightness, highlights and skin colour, sets Exposure / Highlights / Temperature / Tint to match your approved grade references per setup, then re-measures (up to 3 rounds); outdoor VG keeps Temp −4…+8, Tint −2…+4"
     },
     {
      "what": "Learning",

@@ -1,0 +1,30 @@
+{
+ "about": "Starting point for the next client's plan, learned from the user's corrections on AC#6, AC#7, AC#8 (24 Nov 2026). Not a final benchmark: half of each consistent median gap is applied, then the measured grade and the user's review decide. The one-off AC#6 Exposure -0.2 / Shadows -3 fix is excluded.",
+ "updated": "2026-11-24T18:10",
+ "damping": 0.5,
+ "groups": {
+  "office": {
+   "match": "C0* (desk, office / library)",
+   "offset": {"Exposure": 0.2, "Tint": -1.0},
+   "skin": {"Hue Shift": 2.4, "Lum Shift": 4.0},
+   "evidence": "Exposure +0.4 median (n 13, all 3 clients raised it, +0.1..+0.6); Tint -2 median (n 9, mixed sign: AC6/AC7 down, AC8 up -> half, measure per clip); skin Hue +2.4, Lum +4.2 (AC7)"
+  },
+  "greenscreen": {
+   "match": "CAM1 / CAM2 / CAM3",
+   "offset": {"Exposure": 0.12},
+   "set": {"Highlights": -7, "Shadows": 9, "Whites": -10, "Blacks": 5},
+   "skin": {"Lum Shift": 4.0},
+   "evidence": "Exposure +0.25 median (n 10, 3 clients); the same look set by hand on AC6/AC7 green screens: Highlights -7, Shadows +9, Whites -10, Blacks +5; skin Lum +5"
+  },
+  "outdoor": {
+   "match": "VG*",
+   "offset": {"Exposure": 0.1, "Saturation": 4.5},
+   "cap": {"Temperature": [-4, 8], "Tint": [-2, 4]},
+   "evidence": "Temp limit +15 was always pulled down (to 4.2..8.4, 3 clients); Tint +10 -> 0; Saturation +8.8 median (n 6, all +); Exposure +0.22 median (mixed)"
+  }
+ },
+ "trim": {
+  "out": "User moved OUT earlier every time (5/5, -2.3..-8.2 s, median about -3 s): people stand up / look aside after the last word. Engine trim v2 checks the face in the pause and looks back up to 10 s.",
+  "in": "One VG IN moved to 0 (AC7 VG4062)."
+ }
+}

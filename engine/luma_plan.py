@@ -17,6 +17,7 @@ for p in (DEPS, '/tmp/mp10', HERE):
     if p not in sys.path: sys.path.insert(0, p)
 HOUSE = dict(Exposure=0.0, Contrast=19.0, Highlights=8.0, Shadows=-6.0, Saturation=108.0, Tint=2.0, Temperature=0.0)
 PRE, POST = 0.80, 0.60
+WORKERS = max(1, min(3, (os.cpu_count() or 2) // 2))
 
 
 def setup():
@@ -26,7 +27,7 @@ def setup():
     except Exception:
         pass
     os.makedirs(DEPS, exist_ok=True)
-    cmd = [sys.executable, '-m', 'pip', 'install', '--quiet', '--target', DEPS, 'mediapipe==0.10.14', 'numpy<2', 'pillow']
+    cmd = [sys.executable, '-m', 'pip', 'install', '--quiet', '--target', DEPS, 'mediapipe==0.10.14', 'numpy<2', 'pillow', 'faster-whisper']
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         cmd.insert(4, '--break-system-packages'); r = subprocess.run(cmd, capture_output=True, text=True)
@@ -52,29 +53,69 @@ def speech_frames(res, fps, frames):
     return max(0, round((sb['start'] - PRE) * fps)), min(frames - 1, round((sb['end'] + POST) * fps))
 
 
+PRIORS = os.path.expanduser('~/UAI Luma Cut/learning/grade_priors.json')
+
+
+def _priors():
+    for p in (PRIORS, os.path.join(os.path.expanduser('~'), 'mnt', 'UAI Luma Cut', 'learning', 'grade_priors.json'), os.path.join(HERE, 'grade_priors.json')):
+        try: return json.load(open(p))
+        except Exception: pass
+    return None
+
+
+def _group(name):
+    n = name.upper()
+    return 'outdoor' if n.startswith('VG') else 'greenscreen' if n.startswith('CAM') else 'office'
+
+
+def apply_priors(name, g, pri):
+    """Starting point learned from past corrections (not a benchmark): offsets, a fixed look, caps."""
+    if not pri: return g
+    rule = pri.get('groups', {}).get(_group(name))
+    if not rule: return g
+    g = dict(g)
+    for k, d in rule.get('offset', {}).items(): g[k] = round(g.get(k, HOUSE.get(k, 0)) + d, 2)
+    for k, v in rule.get('set', {}).items(): g[k] = v
+    for k, (lo, hi) in rule.get('cap', {}).items():
+        if k in g: g[k] = min(hi, max(lo, g[k]))
+    return g
+
+
+def _analyse(src, work):
+    import trim
+    return trim.run(src, work)
+
+
 def main(request_path, budget):
-    import trim, grade_analyze
+    import grade_analyze
     req = json.load(open(request_path))
     cdir = client_dir_for(request_path, req)
     work = os.path.expanduser(f"~/.lumacut_work/{req['client']}_{req['requestId']}")
     os.makedirs(work, exist_ok=True)
     t0, done, left = time.time(), 0, 0
+    todo = []
     for c in req['clips']:
         name = os.path.splitext(c['file'])[0]
-        cache = os.path.join(work, name + '.json')
-        if os.path.exists(cache): done += 1; continue
-        if time.time() - t0 > budget: left += 1; continue
-        src = os.path.join(cdir, c['rel'])
-        try:
-            res = trim.run(src, work)
-        except Exception as e:
-            res = dict(clip=name, error=str(e)[:300])
-        json.dump(res, open(cache, 'w'), indent=1)
-        done += 1
-        print(json.dumps(dict(clip=c['file'], done=done, total=len(req['clips']))), flush=True)
+        if os.path.exists(os.path.join(work, name + '.json')): done += 1
+        else: todo.append(c)
+    # clips are analysed WORKERS at a time; a new batch starts only while the time budget lasts
+    from concurrent.futures import ProcessPoolExecutor
+    with ProcessPoolExecutor(WORKERS) as ex:
+        while todo and time.time() - t0 <= budget:
+            batch, todo = todo[:WORKERS], todo[WORKERS:]
+            futs = [(c, ex.submit(_analyse, os.path.join(cdir, c['rel']), work)) for c in batch]
+            for c, f in futs:
+                name = os.path.splitext(c['file'])[0]
+                try: res = f.result()
+                except Exception as e: res = dict(clip=name, error=str(e)[:300])
+                json.dump(res, open(os.path.join(work, name + '.json'), 'w'), indent=1, default=str)
+                done += 1
+                print(json.dumps(dict(clip=c['file'], done=done, total=len(req['clips']))), flush=True)
+    left = len(todo)
     if left:
         print(json.dumps(dict(status='running', done=done, total=len(req['clips']), remaining=left))); return
     grades, _ = grade_analyze.run(work)
+    pri = _priors()
     clips = []
     for c in req['clips']:
         name = os.path.splitext(c['file'])[0]
@@ -89,11 +130,19 @@ def main(request_path, budget):
         fo = res['out']['frame'] if isinstance(res.get('out'), dict) else so
         fi, fo = max(0, min(frames - 1, int(fi))), max(0, min(frames - 1, int(fo)))
         if fo <= fi: fi, fo = 0, frames - 1; flags.append('trim failed - set IN/OUT by hand')
+        sbd = res.get('speech')
+        if sbd and isinstance(res.get('out'), dict):   # approved learned rule: OUT 0.5 s earlier, never closer than 0.15 s after the last word
+            floor_f = round((sbd['end'] + 0.15) * fps)
+            if fo > floor_f: fo = max(floor_f, fo - round(0.5 * fps))
         g = grades.get(name, {}).get('grade', HOUSE)
+        g = apply_priors(name, g, pri)
+        if abs(g.get('Exposure', 0)) > 0.6:
+            flags.append(f"exposure {g['Exposure']:+.2f} limited to {0.6 if g['Exposure'] > 0 else -0.6:+.1f}; Grade > Check light & colour sets the final value")
+            g['Exposure'] = 0.6 if g['Exposure'] > 0 else -0.6
         clips.append(dict(file=c['file'], path=c['path'], w=c['w'], h=c['h'], rot=c['rot'], fps=fps, frames=frames,
-                          **{'in': fi}, out=fo, flag='; '.join(flags), grade=g))
+                          **{'in': fi}, out=fo, flag='; '.join(flags), grade=g, group=_group(name)))
     plan = dict(version=1, source='claude', requestId=req['requestId'], client=req['client'],
-                createdAt=time.strftime('%Y-%m-%dT%H:%M:%S'), engine='audio + face (mouth closed, eyes open) + skin grade', clips=clips)
+                createdAt=time.strftime('%Y-%m-%dT%H:%M:%S'), engine='engine v2.1: transcript + audio + face (10 s look-back, best pause frame), grade priors once, OUT -0.5 s, exposure limit +-0.6', clips=clips)
     out = os.path.join(os.path.dirname(os.path.abspath(request_path)), 'luma_plan.json')
     write_atomic(out, plan)
     print(json.dumps(dict(status='plan written', path=out, clips=len(clips), flagged=sum(1 for x in clips if x['flag']))))

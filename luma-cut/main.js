@@ -286,7 +286,7 @@
   }, 3000);
 
   // ---------------- Standalone analysis ----------------
-  function analyseClip(c, adj) {
+  function analyseAudio(c, adj) {
     return new Promise(function (resolve) {
       var fps = c.fps || 29.97;
       if (!state.ffmpeg) return resolve({ inF: 0, outF: c.frames - 1, flag: 'ffmpeg missing - set IN/OUT by hand' });
@@ -296,17 +296,80 @@
       });
     });
   }
+  // ---- trim v2 in Standalone: the same Python engine Claude mode uses (transcript + audio + face), when it is installed ----
+  var PY = null, faceOk = null;
+  function engineEnv() {
+    var e = Object.assign({}, process.env);
+    e.PYTHONPATH = path.join(os.homedir(), '.lumacut_deps') + (e.PYTHONPATH ? ':' + e.PYTHONPATH : '');
+    e.PATH = '/opt/homebrew/bin:/usr/local/bin:' + (e.PATH || '');
+    return e;
+  }
+  function faceEngineReady() {
+    if (faceOk !== null) return faceOk;
+    faceOk = false;
+    try {
+      if (!fs.existsSync(path.join(ENGINE_DIR, 'trim.py'))) return faceOk;
+      ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3'].forEach(function (p) { if (!PY && fs.existsSync(p)) PY = p; });
+      if (!PY) return faceOk;
+      cp.execFileSync(PY, ['-c', 'import mediapipe, numpy'], { env: engineEnv(), stdio: 'ignore', timeout: 40000 });
+      faceOk = true;
+    } catch (e) { log('face engine not ready: ' + String(e.message || e).slice(0, 120)); }
+    return faceOk;
+  }
+  function faceTrim(c) {
+    return new Promise(function (resolve) {
+      var work = path.join(HOME_DIR, 'standalone_work');
+      try { fs.mkdirSync(work, { recursive: true }); } catch (e) {}
+      cp.execFile(PY, [path.join(ENGINE_DIR, 'trim.py'), c.path, work], { env: engineEnv(), timeout: 900000, maxBuffer: 64 * 1024 * 1024 }, function (err, stdout) {
+        if (err) { log('face trim failed ' + c.file + ': ' + String(err.message || err).slice(0, 160)); return resolve(null); }
+        var res; try { res = JSON.parse(stdout.slice(stdout.indexOf('{'))); } catch (e) { return resolve(null); }
+        if (!res || res.flag === 'no speech found' || !res.in || !res.out) return resolve(null);
+        var fps = c.fps || 29.97, inF = Math.max(0, Math.min(c.frames - 1, res.in.frame)), outF = Math.max(0, Math.min(c.frames - 1, res.out.frame));
+        if (res.speech) {    // approved learned rule: OUT 0.5 s earlier, never closer than 0.15 s after the last word
+          var floorF = Math.round((res.speech.end + 0.15) * fps);
+          if (outF > floorF) outF = Math.max(floorF, outF - Math.round(0.5 * fps));
+        }
+        if (outF <= inF) return resolve(null);
+        resolve({ inF: inF, outF: outF, flag: (res.flags || []).join('; ') });
+      });
+    });
+  }
+  function analyseClip(c, adj) {
+    var audio = analyseAudio(c, adj);
+    if (!faceEngineReady()) return audio;
+    return faceTrim(c).then(function (f) {
+      if (f) return f;
+      return audio.then(function (a) { a.flag = (a.flag ? a.flag + '; ' : '') + 'face check failed - audio trim only'; return a; });
+    });
+  }
+  // ---- grade priors (learned from past corrections; a starting point, Grade > Check light & colour sets the final values) ----
+  function loadPriors() {
+    var ps = [path.join(HOME_DIR, 'learning', 'grade_priors.json'), path.join(ENGINE_DIR, 'grade_priors.json')];
+    for (var i = 0; i < ps.length; i++) { try { return JSON.parse(fs.readFileSync(ps[i], 'utf8')); } catch (e) {} }
+    return null;
+  }
+  function groupOf(file) { var n = String(file).toUpperCase(); return n.indexOf('VG') === 0 ? 'outdoor' : n.indexOf('CAM') === 0 ? 'greenscreen' : 'office'; }
+  function gradeWithPriors(file, house, pri) {
+    var g = Object.assign({}, house), r = pri && pri.groups && pri.groups[groupOf(file)];
+    if (!r) return g;
+    Object.keys(r.offset || {}).forEach(function (k) { g[k] = Math.round(((g[k] || 0) + r.offset[k]) * 100) / 100; });
+    Object.keys(r.set || {}).forEach(function (k) { g[k] = r.set[k]; });
+    Object.keys(r.cap || {}).forEach(function (k) { if (k in g) g[k] = Math.min(r.cap[k][1], Math.max(r.cap[k][0], g[k])); });
+    g.Exposure = Math.max(-0.6, Math.min(0.6, g.Exposure || 0));
+    return g;
+  }
   async function standalonePlan(progress) {
     var clips = [], learned = learn.standalone(), house = {};
     Object.keys(XB.HOUSE).forEach(function (k) { house[k] = XB.HOUSE[k] + (learned.grade[k] || 0); });
     if (learned.count) log('standalone uses ' + learned.count + ' learned rules: ' + JSON.stringify(learned));
+    var pri = loadPriors(), faceMode = faceEngineReady();
     for (var i = 0; i < state.clips.length; i++) {
       var c = state.clips[i];
-      progress(i, state.clips.length, 'Reading audio ' + (i + 1) + ' of ' + state.clips.length + ' — ' + c.file);
+      progress(i, state.clips.length, (faceMode ? 'Face trim ' : 'Reading audio ') + (i + 1) + ' of ' + state.clips.length + ' — ' + c.file);
       var t = await analyseClip(c, learned.trim);
-      clips.push({ file: c.file, path: c.path, w: c.w, h: c.h, rot: c.rot, fps: c.fps, frames: c.frames, 'in': t.inF, out: t.outF, flag: t.flag || (state.dup.results[c.file] ? state.dup.results[c.file].detail : ''), grade: house });
+      clips.push({ file: c.file, path: c.path, w: c.w, h: c.h, rot: c.rot, fps: c.fps, frames: c.frames, 'in': t.inF, out: t.outF, flag: t.flag || (state.dup.results[c.file] ? state.dup.results[c.file].detail : ''), grade: gradeWithPriors(c.file, house, pri), group: groupOf(c.file) });
     }
-    var plan = { version: 1, source: 'standalone', client: state.client.name, createdAt: new Date().toISOString(), clips: clips };
+    var plan = { version: 1, source: 'standalone', trim: faceMode ? 'face v2' : 'audio', client: state.client.name, createdAt: new Date().toISOString(), clips: clips };
     fs.mkdirSync(state.client.projDir, { recursive: true });
     fs.writeFileSync(state.client.planFile, JSON.stringify(plan, null, 1));
     state.plan = plan; state.request = null;

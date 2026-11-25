@@ -35,6 +35,13 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "lumacut" ]; then
   mkdir -p "$HOME/UAI Luma Cut/engine"
   cp -R "$ROOT/engine/." "$HOME/UAI Luma Cut/engine"
   echo "Installed UAI Luma Cut v$(version "$EXT/com.uai.lumacut") (engine in ~/UAI Luma Cut/engine)"
+  # trim v2 (face check) needs Python packages in ~/.lumacut_deps; optional, Standalone falls back to audio trim without them
+  PYB="$(command -v /opt/homebrew/bin/python3 || command -v python3 || true)"
+  if [ -n "$PYB" ] && ! PYTHONPATH="$HOME/.lumacut_deps" "$PYB" -c "import mediapipe, numpy" >/dev/null 2>&1; then
+    echo "Installing the face-trim packages (mediapipe, faster-whisper) into ~/.lumacut_deps …"
+    "$PYB" -m pip install --quiet --target "$HOME/.lumacut_deps" "mediapipe==0.10.14" "numpy<2" pillow faster-whisper \
+      || echo "Face-trim packages could not be installed (needs Python 3.9–3.12). Standalone keeps the audio trim."
+  fi
   if ! command -v ffmpeg >/dev/null 2>&1 && [ ! -x /opt/homebrew/bin/ffmpeg ] && [ ! -x /usr/local/bin/ffmpeg ]; then
     if command -v brew >/dev/null 2>&1; then
       echo "Installing ffmpeg (Standalone trim reads the audio with it)…"
