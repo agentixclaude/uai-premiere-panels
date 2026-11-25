@@ -1,7 +1,7 @@
 <p align="center"><img src=".github/assets/banner.jpg" alt="UAI Premiere panels for the edit team" width="100%"></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Luma%20Cut-1.6.0-fa914f?style=flat-square" alt="Luma Cut 1.6.0">
+  <img src="https://img.shields.io/badge/Luma%20Cut-1.8.2-fa914f?style=flat-square" alt="Luma Cut 1.8.2">
   <img src="https://img.shields.io/badge/Smart%20Export-1.8.1-fa914f?style=flat-square" alt="Smart Export 1.8.1">
   <img src="https://img.shields.io/badge/Arena%20Hub-0.6.1-4f8cff?style=flat-square" alt="Arena Hub 0.6.1">
   <img src="https://img.shields.io/badge/Premiere%20MCP-1.31.0-3a3a3f?style=flat-square" alt="Premiere MCP 1.31.0">
@@ -35,6 +35,11 @@
 | **Premiere MCP** | Lets Claude read and drive Premiere (timelines, clips, effects, exports). Team-tested version, one installer. | [`mcp/`](mcp/) |
 
 ## What's new
+**Luma Cut 1.8.2** · 2026-11-25 16:20
+- **How to use** — About › How to use: the 8 steps from client folder to verified export. Same steps on GitHub: [Start a client](docs/how-to-start.md)
+
+**Luma Cut 1.8.1** · 2026-11-25 13:45 — trim engine ignores spoken count-ins · **1.8.0** — face trim in Standalone, learned grade priors · **1.7.0** — Check light & colour
+
 **Luma Cut 1.6.0** · 2026-11-24 15:08
 - **About** — New updates: every version with its date, time and what changed
 - **Undo / Redo** — Undo and Redo buttons in the header; Cmd+Z / Shift+Cmd+Z work inside the panel too (Premiere's own undo)
@@ -86,7 +91,7 @@ Needs a Mac, Premiere Pro 2020 or newer, Adobe Media Encoder (for Smart Export).
 - **Review**: flagged clips, re-sync markers, save grade references, final check that feeds the learning.
 - **About**: what changed in each version.
 
-[Full Luma Cut guide →](docs/luma-cut.md)
+**New here? [Start a client in 13 steps →](docs/how-to-start.md)** · [Full Luma Cut guide →](docs/luma-cut.md)
 
 </td></tr></table>
 

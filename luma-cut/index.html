@@ -161,22 +161,30 @@
 <!-- ABOUT -->
 <div class="tab" id="tab-about" hidden>
   <section>
+    <details class="howto">
+      <summary><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span>How to use</span><span class="end">one client at a time</span></summary>
+      <div class="note">Client folder: <b>Raw Data</b>, <b>Project File</b>, <b>Final Output</b>. Name it like <i>AC#12 Name</i> for agency clients.</div>
+      <ol class="steps">
+        <li><b>Build</b> — <i>Choose folder…</i> → <i>New project for this client</i> (no manual import).</li>
+        <li><b>Mode</b> — <i>Standalone</i> (default, no Claude) or <i>Claude</i>: <i>Ask Claude</i>, paste the prompt in Claude desktop, wait for <i>Plan ready</i>. Then <i>Analyse and build</i>.</li>
+        <li><b>Cuts</b> — Review › Flagged by system: IN mouth closed + eyes open, OUT before they stand or look aside. Check <i>REVIEW</i> clips first. Rolling Edit, then <i>Re-sync markers</i>.</li>
+        <li><b>Light</b> — Grade › scope All sequences › <i>Check light &amp; colour</i>.</li>
+        <li><b>Look</b> — eye-check one clip per group (office, green screen, outdoor): preset or sliders, <i>Copy</i> → select the group → <i>Paste</i>.</li>
+        <li><b>Skin / green</b> — Premiere's Color tab, Color Mode “Custom”; yellow faces → skin Hue +2…+5. Copy / Paste Grade per group.</li>
+        <li><b>Lock</b> — Review › <i>Save grade reference</i> on your best clips, then <i>Final check &amp; save learning</i> (press twice).</li>
+        <li><b>Export</b> — UAI Smart Export: Final Output, All, <i>Export all</i>, then Results › <i>Verify files</i>.</li>
+      </ol>
+      <div class="note">Full guide: github.com/agentixclaude/uai-premiere-panels › docs › how-to-start</div>
+    </details>
+  </section>
+  <section>
     <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>New updates</span><span class="end">what changed, before → now</span></div>
     <div id="updates" class="updates"></div>
   </section>
   <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span>Workflow</span></div>
-    <ol class="steps">
-      <li><b>Build</b> — choose the client folder, Standalone or Claude, build all sequences. Duplicates are checked by content first.</li>
-      <li><b>Grade</b> — exposure preset, live Lumetri, Remove green. <i>Copy</i> one clip's Overall, select other clips, <i>Paste</i>. Everything is live; skin and green Color Shift stay in Premiere's Color tab.</li>
-      <li><b>Review</b> — fix flags, save grade references, then <i>Final check &amp; save learning</i>.</li>
-      <li><b>Export</b> — UAI Smart Export.</li>
-    </ol>
-  </section>
-  <section>
     <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v4m4-7v10m5-14v18m5-14v10m4-7v4"/></svg><span>Engines</span></div>
     <div class="cols">
-      <div><b>Standalone</b><span>Trim from the audio, house grade, plus learned rules that repeat across at least 2 reviewed batches.</span></div>
+      <div><b>Standalone</b><span>Face-checked trim (audio fallback), house grade plus learned starting values per setup, rules from 2+ reviewed batches.</span></div>
       <div><b>Claude</b><span>Face-checked IN/OUT, grade matched per clip, reads the learned rules and recent reviews.</span></div>
     </div>
     <div class="row opts"><span id="ffmpegstate" class="chip"></span><span id="enginestate" class="chip"></span></div>

@@ -78,3 +78,11 @@
 .clipboard b { color: var(--text); font-size: 12px; font-weight: 650; }
 .clipboard.empty { border-color: var(--line-soft); background: var(--panel); }
 .clipboard.empty b { color: var(--text-3); font-weight: 500; }
+
+/* About › How to use (dropdown) */
+.howto > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; color: var(--title); font-weight: 650; margin-bottom: 6px; }
+.howto > summary::-webkit-details-marker { display: none; }
+.howto > summary::after { content: "▾"; margin-left: 4px; color: var(--text-3); transition: transform .15s ease-out; }
+.howto:not([open]) > summary::after { transform: rotate(-90deg); }
+.howto > summary .end { margin-left: auto; color: var(--text-3); font-weight: 400; font-size: 11px; }
+.howto .note { margin: 4px 0 6px; }

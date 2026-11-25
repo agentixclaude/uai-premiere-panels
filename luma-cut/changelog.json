@@ -2,6 +2,22 @@
  "panel": "UAI Luma Cut",
  "entries": [
   {
+   "version": "1.8.2",
+   "date": "2026-11-25T16:20",
+   "changes": [
+    {
+     "what": "About › How to use",
+     "before": "a short Workflow list that still described the audio-only trim",
+     "now": "a How to use dropdown at the top of About: the 8 steps from client folder to verified export, matching docs/how-to-start.md on GitHub"
+    },
+    {
+     "what": "About › Engines",
+     "before": "Standalone described as audio-only trim",
+     "now": "describes face-checked trim and learned starting values (since 1.8.0)"
+    }
+   ]
+  },
+  {
    "version": "1.8.1",
    "date": "2026-11-25T13:45",
    "changes": [
