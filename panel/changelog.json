@@ -2,6 +2,17 @@
  "panel": "UAI Smart Export",
  "entries": [
   {
+   "version": "1.8.2",
+   "date": "2026-11-25T18:40",
+   "changes": [
+    {
+     "what": "About › Output rules",
+     "before": "did not say which media an export reads",
+     "now": "Source: original media, never proxies. Checked: a Media Encoder export with a marked proxy attached and proxies on contained none of the proxy"
+    }
+   ]
+  },
+  {
    "version": "1.8.1",
    "date": "2026-11-24T15:08",
    "changes": [

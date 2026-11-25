@@ -32,6 +32,12 @@
   var q = function (s) { return JSON.stringify(String(s)); };
   function evalJsx(script) { return new Promise(function (resolve) { window.__adobe_cep__.evalScript(script, function (r) { resolve(r); }); }); }
   async function jsx(script) { var r = await evalJsx(script); try { return JSON.parse(r); } catch (e) { return { error: r && r !== 'EvalScript error.' ? r : 'Premiere did not answer. Reopen the panel.' }; } }
+  // Stills are deliverables (Final Output / Stills) and measurements, so they always come from the ORIGINAL media.
+  // Premiere's frame export draws the proxy while proxies are shown: switch them off for the still, then back on.
+  async function originalStill(script) {
+    var was = await evalJsx('lcProxyHold()');
+    try { return await evalJsx(script); } finally { if (was === 'OK:1') await evalJsx('lcProxyShow(1)'); }
+  }
   function setStatus(id, text, tone) { var el = $(id); el.textContent = text || ''; el.className = 'status' + (tone ? ' tone-' + tone : ''); }
   function fmtDur(s) { s = Math.max(0, s); var m = Math.floor(s / 60), r = Math.round(s - m * 60); if (r === 60) { m++; r = 0; } return m + ':' + (r < 10 ? '0' : '') + r; }
   function store(k, v) { try { if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v); } catch (e) {} }
@@ -759,7 +765,7 @@
       var color = KEY_DEFAULT;
       if (state.ffmpeg) {
         var base = path.join(KEY_TMP, 'k' + i);
-        var st = await evalJsx('lcStillIn(' + q(t.seqId) + ',' + q(t.ticks) + ',' + q(base) + ')');
+        var st = await originalStill('lcStillIn(' + q(t.seqId) + ',' + q(t.ticks) + ',' + q(base) + ')');
         var png = [base + '.png', base].filter(function (f) { return fs.existsSync(f); })[0];
         var smp = /^OK/.test(st) && png ? await sampleFrame(png) : null;
         try { if (png) fs.unlinkSync(png); } catch (e) {}
@@ -886,7 +892,7 @@
   function anyStep(d) { return !!(d.exposure || d.highlights || d.temperature || d.tint); }
   async function stillOf(t, tag) {
     var base = path.join(LC_TMP, 'l' + t.index + '_' + tag + '_' + Date.now());
-    var st = await evalJsx('lcStillIn(' + q(t.seqId) + ',' + q(t.ticks) + ',' + q(base) + ')');
+    var st = await originalStill('lcStillIn(' + q(t.seqId) + ',' + q(t.ticks) + ',' + q(base) + ')');
     var f = [base + '.png', base + '.jpg', base].filter(function (x) { return fs.existsSync(x); })[0];
     var m = /^OK/.test(st) && f ? await measureImage(f) : null;
     try { if (f) fs.unlinkSync(f); } catch (e) {}
@@ -1183,7 +1189,7 @@
         var c = clips[i], stem = stemOf(c.name);
         setStatus('rstatus', 'Grade reference ' + (i + 1) + ' of ' + clips.length + ' — ' + stem);
         var mid = String(Math.round((Number(c.startTicks) + Number(c.endTicks)) / 2 / frame) * frame), raw = path.join(tmpDir, stem);
-        var st = await evalJsx('lcStill(' + q(mid) + ',' + q(raw) + ')');
+        var st = await originalStill('lcStill(' + q(mid) + ',' + q(raw) + ')');
         var src = [raw + '.png', raw + '.jpg', raw].filter(function (f) { return fs.existsSync(f); })[0];
         var image = path.join(dir, stem + '_REF.jpg'), thumb = path.join(thumbDir, stem + '.jpg');
         var okImg = src ? await sips(src, image, 1920, 82) : false, okThumb = src ? await sips(src, thumb, 320, 70) : false;

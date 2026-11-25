@@ -2,6 +2,22 @@
  "panel": "UAI Luma Cut",
  "entries": [
   {
+   "version": "1.9.1",
+   "date": "2026-11-25T18:40",
+   "changes": [
+    {
+     "what": "Stills (Check light & colour, Remove green, Save grade reference)",
+     "before": "with proxies on, Premiere drew the still from the 1080p proxy (upscaled), so grade references in Final Output / Stills and light measurements came from the proxy",
+     "now": "proxies switch off for each capture and back on after, so every still is the original media (checked with a marked proxy: none of it in the still)"
+    },
+    {
+     "what": "About",
+     "before": "How to use had no proxy step",
+     "now": "How to use › Proxies step; new Proxies & output section: what uses the proxy (playback) and what always uses the original (grade, stills, export)"
+    }
+   ]
+  },
+  {
    "version": "1.9.0",
    "date": "2026-11-25T17:45",
    "changes": [

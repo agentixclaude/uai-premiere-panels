@@ -599,6 +599,10 @@ function lcProxyAttach(nodeId, proxyPath) {
         return it.hasProxy() ? 'OK' : 'ERR:Premiere did not accept the proxy';
     } catch (e) { return 'ERR:' + e.toString(); }
 }
+// Before a still: proxies off so the frame comes from the original media. OK:1 = they were on (restore with lcProxyShow(1)).
+function lcProxyHold() {
+    try { var on = !!app.getEnableProxies(); if (on) { app.setEnableProxies(0); } return on ? 'OK:1' : 'OK:0'; } catch (e) { return 'ERR:' + e.toString(); }
+}
 // on: 1 shows proxies in every monitor (app-wide), 0 shows the originals
 function lcProxyShow(on) {
     try { app.setEnableProxies(on ? 1 : 0); return app.getEnableProxies() ? 'OK:1' : 'OK:0'; } catch (e) { return 'ERR:' + e.toString(); }
