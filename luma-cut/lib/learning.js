@@ -68,7 +68,7 @@ Store.prototype.removeThumbs = function (b) {
 // a confirmed review: changes = [{clip, camera, items:[{area, field, from, to}]}]; updates the rules, then prunes
 Store.prototype.addReview = function (meta, changes, note, reviewer) {
   var s = this.load(), b = this.batch(s, meta.key, meta);
-  b.reviews.push({ date: new Date().toISOString(), reviewer: reviewer, note: note, changes: changes });
+  b.reviews.push({ date: new Date().toISOString(), reviewer: reviewer, note: note, project: meta.project || '', changes: changes });
   b.reviews = b.reviews.slice(-5);
   updateRules(s, meta.key, changes);
   var dropped = this.prune(s, meta.key);
@@ -119,6 +119,32 @@ function activeRules(s) {
   return out;
 }
 Store.prototype.activeRules = function () { return activeRules(this.load()); };
+// One-time repair (1.7.0): before 1.7.0 every review was saved under the panel's chosen client folder, not the
+// project that was open, so reviews from different clients shared one batch and no rule could reach 2 batches.
+// moves: [{ at: 'YYYY-MM-DDTHH:MM' (UTC minute), key, client, ac }] — a review within 2 min of `at` goes to that batch.
+// Then every rule is rebuilt from the stored reviews. Runs once per id; nothing is deleted.
+Store.prototype.repair = function (id, moves) {
+  if (!this.exists()) return 0;
+  var s = this.load(); s.repairs = s.repairs || [];
+  if (s.repairs.indexOf(id) >= 0) return 0;
+  var self = this, moved = 0;
+  s.batches.slice().forEach(function (b) {
+    b.reviews = (b.reviews || []).filter(function (r) {
+      var t = Date.parse(r.date), m = moves.filter(function (x) { return Math.abs(Date.parse(x.at + ':00Z') - t) <= 120000; })[0];
+      if (!m || m.key === b.key) return true;
+      var nb = self.batch(s, m.key, { client: m.client, ac: m.ac, project: r.project || '' });
+      nb.reviews.push(r); nb.reviews.sort(function (x, y) { return String(x.date).localeCompare(String(y.date)); });
+      nb.updatedAt = r.date > (nb.updatedAt || '') ? r.date : nb.updatedAt; moved++;
+      return false;
+    });
+  });
+  s.batches = s.batches.filter(function (b) { return b.reviews.length || b.references.length; });
+  s.rules = {};
+  s.batches.forEach(function (b) { b.reviews.forEach(function (r) { updateRules(s, b.key, r.changes || []); }); });
+  s.repairs.push(id);
+  this.write(s);
+  return moved;
+};
 // Standalone: Lumetri offsets (all cameras) + pre/post roll adjustment, bounded
 Store.prototype.standalone = function () {
   var grade = {}, trim = { pre: 0, post: 0 }, n = 0;

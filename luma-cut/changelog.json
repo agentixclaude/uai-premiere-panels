@@ -2,6 +2,27 @@
  "panel": "UAI Luma Cut",
  "entries": [
   {
+   "version": "1.7.0",
+   "date": "2026-11-25T11:00",
+   "changes": [
+    {
+     "what": "Grade \u2192 Light check",
+     "before": "exposure and colour came from the plan or a fixed preset, never checked on the graded picture",
+     "now": "Check light & colour: exports each clip's graded frame, measures face brightness, highlights and skin colour, sets Exposure / Highlights / Temperature / Tint to match your approved grade references per setup, then re-measures (up to 3 rounds); outdoor VG keeps Temp \u22124\u2026+8, Tint \u22122\u2026+4"
+    },
+    {
+     "what": "Learning",
+     "before": "every review was saved under the client folder picked in Build, so reviews of different clients merged and no rule switched on",
+     "now": "saved under the client of the open project; the 24 Nov reviews are moved back to AC#6, AC#7 and AC#8 once and the rules rebuilt"
+    },
+    {
+     "what": "Grade reference stills",
+     "before": "saved into the Build client's Final Output",
+     "now": "saved into the open project's client Final Output"
+    }
+   ]
+  },
+  {
    "version": "1.6.0",
    "date": "2026-11-24T15:08",
    "changes": [

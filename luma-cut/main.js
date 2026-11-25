@@ -40,6 +40,15 @@
   var DUPE_CACHE = path.join(HOME_DIR, 'dupe_cache.json');
   var learn = new LEARN.Store(path.join(HOME_DIR, 'learning'));
   try { learn.migrate(MEMORY_FILE, SAMPLES_FILE); } catch (e) { log('learning migrate: ' + e.message); }
+  // 1.7.0: the 24 Nov reviews (AC#6 ×2, AC#7, AC#8) were all saved under AC#8; put each back under its own client
+  try {
+    var moved = learn.repair('2026-11-25-review-keys', [
+      { at: '2026-11-24T09:43', key: 'AC6_GingerSweetan', client: 'AC6_GingerSweetan', ac: true },
+      { at: '2026-11-24T11:19', key: 'AC7_MilagrosPhillips', client: 'AC7_MilagrosPhillips', ac: true },
+      { at: '2026-11-24T11:37', key: 'AC6_GingerSweetan', client: 'AC6_GingerSweetan', ac: true },
+      { at: '2026-11-24T12:32', key: 'AC8_StevenDobson', client: 'AC8_StevenDobson', ac: true }]);
+    if (moved) log('learning repair: ' + moved + ' reviews moved to their own client');
+  } catch (e) { log('learning repair: ' + e.message); }
   var state = { all: [], dup: { results: {}, checked: false, busy: false }, info: null, client: null, clips: [], skipped: [], mode: load('lc:mode') || 'standalone', plan: null, request: null, busy: false, armed: 0, ffmpeg: SPEECH.findFfmpeg() };
 
   // ---------------- client folder ----------------
@@ -615,6 +624,158 @@
     await gradeRefresh();
   });
 
+  // ---------------- Light check: measure each clip's GRADED frame, correct to the approved look, verify ----------------
+  // No fixed offsets. For every clip in scope: export the graded mid-clip frame, read its light graph (face brightness,
+  // highlight percentile) and colour balance (skin chroma), compare with the target for its setup, nudge Exposure /
+  // Highlights / Temperature / Tint on that clip only, export again and re-measure (up to 3 rounds).
+  // Targets = medians measured on the team's approved grade references (Review → Save grade reference), per setup
+  // (office C00xx · green screen CAM · outdoor VG); defaults only when no reference exists yet.
+  var LC_TMP = path.join(os.tmpdir(), 'uai_lumacut_light');
+  var LC_DEFAULT_TARGET = { Y: 0.56, rg: 0.62, bg: -0.42, n: 0, from: 'default' };   // used only before any reference exists
+  var LC_TOL = { ev: 0.08, chroma: 0.025 };
+  var LC_CAPS = { outdoor: { temperature: [-4, 8], tint: [-2, 4] } };                  // VG: the reviews pulled +15 / +10 back to 4–8 / 0
+  function setupOf(name) {
+    var cam = String(name).replace(/\.[^.]+$/, '').toUpperCase();
+    if (/^CAM\d/.test(cam)) return 'green';
+    if (/^VG/.test(cam)) return 'outdoor';
+    return 'office';
+  }
+  function lin(v) { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  function median(a) { if (!a.length) return null; a = a.slice().sort(function (x, y) { return x - y; }); return a[a.length >> 1]; }
+  function pct(a, p) { if (!a.length) return null; a = a.slice().sort(function (x, y) { return x - y; }); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; }
+  // light graph + colour balance of one image (png/jpg): face/skin brightness, highlights, skin chroma
+  function measureImage(file) {
+    return new Promise(function (resolve) {
+      if (!state.ffmpeg || !file) return resolve(null);
+      var W = 128, H = 128;
+      cp.execFile(state.ffmpeg, ['-v', 'error', '-i', file, '-vf', 'scale=' + W + ':' + H + ':flags=area', '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+        { encoding: 'buffer', maxBuffer: 1 << 20 }, function (err, out) {
+          if (err || !out || out.length < W * H * 3) return resolve(null);
+          var all = [], skin = [], centre = [];
+          for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+            var i = (y * W + x) * 3, r = out[i], g = out[i + 1], b = out[i + 2];
+            var Y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+            all.push(Y);
+            var inCentre = x > W * 0.2 && x < W * 0.8 && y > H * 0.06 && y < H * 0.78;
+            if (!inCentre) continue;
+            centre.push(Y);
+            var span = r - b, hue = span > 0 ? (r - g) / span : -1;
+            if (r > 55 && r > g && g > b && span >= 18 && hue > 0.12 && hue < 0.8 && Y < 0.96 && !(g > r * 0.98)) skin.push([r, g, b, Y]);
+          }
+          var res = { p995: pct(all, 0.995), p02: pct(all, 0.02), skinN: skin.length };
+          if (skin.length >= 40) {
+            var Ls = skin.map(function (c) { return [lin(c[0]) + 1e-4, lin(c[1]) + 1e-4, lin(c[2]) + 1e-4]; });
+            res.Y = median(skin.map(function (c) { return c[3]; }));
+            res.rg = median(Ls.map(function (c) { return Math.log(c[0] / c[1]); }));
+            res.bg = median(Ls.map(function (c) { return Math.log(c[2] / c[1]); }));
+          } else { res.Y = median(centre); res.noSkin = true; }      // no face found: centre brightness only, colour left alone
+          resolve(res);
+        });
+    });
+  }
+  // targets per setup from the approved grade references (thumbs), cached per session
+  var lcTargetCache = null;
+  async function lightTargets() {
+    if (lcTargetCache) return lcTargetCache;
+    var s = learn.load(), per = { office: [], green: [], outdoor: [] };
+    var refs = []; s.batches.forEach(function (b) { (b.references || []).forEach(function (r) { refs.push(r); }); });
+    for (var i = 0; i < refs.length; i++) {
+      var f = [refs[i].thumb, refs[i].image].filter(function (x) { return x && fs.existsSync(x); })[0];
+      if (!f) continue;
+      var m = await measureImage(f);
+      if (m && !m.noSkin) per[setupOf(refs[i].clip)].push(m);
+    }
+    var pool = per.office.concat(per.green, per.outdoor), out = {};
+    var agg = function (list, from) {
+      return { Y: median(list.map(function (m) { return m.Y; })), rg: median(list.map(function (m) { return m.rg; })), bg: median(list.map(function (m) { return m.bg; })),
+               p995: median(list.map(function (m) { return m.p995; })), n: list.length, from: from };
+    };
+    Object.keys(per).forEach(function (k) {
+      out[k] = per[k].length >= 2 ? agg(per[k], 'references') : pool.length >= 3 ? agg(pool, 'all references') : Object.assign({}, LC_DEFAULT_TARGET);
+    });
+    lcTargetCache = out;
+    return out;
+  }
+  function clampTo(v, lim) { return Math.max(lim[0], Math.min(lim[1], v)); }
+  // one correction step from a measurement; returns {exposure, highlights, temperature, tint} deltas (0 = leave)
+  function lightStep(m, t, cur, setup, round) {
+    var d = { exposure: 0, highlights: 0, temperature: 0, tint: 0 }, damp = round === 0 ? 0.85 : 0.7;
+    if (m.Y && t.Y) {
+      var ev = Math.log(lin(t.Y * 255) / lin(m.Y * 255)) / Math.LN2;
+      if (Math.abs(ev) > LC_TOL.ev) d.exposure = Math.round(clampTo(damp * ev, [-0.6, 0.6]) * 100) / 100;
+    }
+    var hiCap = Math.max(0.93, Math.min(0.985, (t.p995 || 0.95) + 0.02));
+    if (m.p995 > hiCap && d.exposure >= 0) d.highlights = -8;                       // clipping: pull highlights, never via exposure alone
+    if (!m.noSkin && t.rg !== null && t.bg !== null) {
+      var dbg = m.bg - t.bg, drg = m.rg - t.rg;
+      if (Math.abs(dbg) > LC_TOL.chroma) d.temperature = Math.round(clampTo(80 * dbg, [-6, 6]) * 10) / 10;   // bluer than target → warmer
+      if (Math.abs(drg) > LC_TOL.chroma) d.tint = Math.round(clampTo(-60 * drg, [-4, 4]) * 10) / 10;         // redder/magenta → toward green
+    }
+    var caps = LC_CAPS[setup];
+    if (caps && cur) {
+      if (cur.temperature !== null && cur.temperature !== undefined) d.temperature = Math.round((clampTo(cur.temperature + d.temperature, caps.temperature) - cur.temperature) * 10) / 10;
+      if (cur.tint !== null && cur.tint !== undefined) d.tint = Math.round((clampTo(cur.tint + d.tint, caps.tint) - cur.tint) * 10) / 10;
+    }
+    return d;
+  }
+  function stepCsv(d) { return LUM_ORDER.map(function (k) { return d[k] ? d[k] : 'x'; }).join(','); }
+  function anyStep(d) { return !!(d.exposure || d.highlights || d.temperature || d.tint); }
+  async function stillOf(t, tag) {
+    var base = path.join(LC_TMP, 'l' + t.index + '_' + tag + '_' + Date.now());
+    var st = await evalJsx('lcStillIn(' + q(t.seqId) + ',' + q(t.ticks) + ',' + q(base) + ')');
+    var f = [base + '.png', base + '.jpg', base].filter(function (x) { return fs.existsSync(x); })[0];
+    var m = /^OK/.test(st) && f ? await measureImage(f) : null;
+    try { if (f) fs.unlinkSync(f); } catch (e) {}
+    return m;
+  }
+  async function lightCheck() {
+    var info = grade.info; if (!info) { setStatus('gstatus', 'Open a client sequence first.', 'warn'); return; }
+    if (!state.ffmpeg) { setStatus('gstatus', 'Light check needs ffmpeg. Install it with install.sh.', 'warn'); return; }
+    var targets = await jsx('lcLightTargets(' + q(grade.scope) + ')');
+    if (targets.error) { setStatus('gstatus', targets.error, 'bad'); return; }
+    if (!targets.length) { setStatus('gstatus', grade.scope === 'selected' ? 'Select clips in the timeline first.' : 'No enabled clips on V1.', 'warn'); return; }
+    fs.mkdirSync(LC_TMP, { recursive: true });
+    setStatus('gstatus', 'Reading the approved grade references…');
+    var T = await lightTargets(), report = [], changed = 0, okN = 0, failed = 0, noFace = 0;
+    for (var i = 0; i < targets.length; i++) {
+      var t = targets[i], setup = setupOf(t.name), tg = T[setup], cur = t.values, row = { clip: t.name, setup: setup, target: tg, rounds: [] };
+      var total = { exposure: 0, highlights: 0, temperature: 0, tint: 0 };
+      for (var round = 0; round < 3; round++) {
+        setStatus('gstatus', 'Light check ' + (i + 1) + ' of ' + targets.length + ' — ' + t.name + (round ? ' (verify ' + round + ')' : ''));
+        var m = await stillOf(t, round);
+        if (!m) { row.error = 'frame export failed'; break; }
+        var d = round < 2 ? lightStep(m, tg, cur, setup, round) : { exposure: 0, highlights: 0, temperature: 0, tint: 0 };
+        if (round > 0 && total.highlights) d.highlights = 0;                      // highlights pulled once only
+        row.rounds.push({ measured: m, step: d });
+        if (!anyStep(d)) break;
+        var nv = await jsx('lcNudgeAt(' + q(t.seqId) + ',' + t.index + ',' + q(stepCsv(d)) + ')');
+        if (nv.error) { row.error = nv.error; break; }
+        cur = nv; Object.keys(total).forEach(function (k) { total[k] = Math.round((total[k] + d[k]) * 100) / 100; });
+      }
+      var last = row.rounds[row.rounds.length - 1];
+      row.total = total; row.values = cur;
+      if (row.error) failed++; else if (anyStep(total)) changed++; else okN++;
+      if (last && last.measured && last.measured.noSkin) noFace++;
+      report.push(row);
+    }
+    await evalJsx('lcOpenSeq(' + q(info.sequenceId) + ')');
+    await evalJsx('lcGoto(' + q(info.position) + ')');
+    try {
+      var logFile = path.join(path.dirname(info.projectPath), 'luma_lightcheck.json');
+      fs.writeFileSync(logFile, JSON.stringify({ date: new Date().toISOString(), targets: T, clips: report }, null, 1));
+    } catch (e) { log('light check log: ' + e.message); }
+    var src = Object.keys(T).map(function (k) { return T[k].from; }).indexOf('default') >= 0 ? ' · no approved references for some setups yet: save grade references in Review so the targets come from your grades' : '';
+    setStatus('gstatus', 'Light check: ' + plural(changed) + ' corrected, ' + plural(okN) + ' already on target' + (noFace ? ' · ' + noFace + ' without a face, brightness only' : '') +
+      (failed ? ' · ' + failed + ' failed' : '') + '. Cmd+Z undoes.' + src, failed ? 'warn' : 'ok');
+  }
+  $('glight').addEventListener('click', async function () {
+    if (grade.busy || liveBusy) return;
+    grade.busy = true; gRender(); $('glight').disabled = true;
+    try { await lightCheck(); } catch (e) { setStatus('gstatus', 'Light check stopped: ' + e.message, 'bad'); }
+    grade.busy = false; $('glight').disabled = false;
+    await gradeRefresh();
+  });
+
   // ---------------- Copy / Paste grade (live, Cmd+Z undoes) ----------------
   // Copy keeps one clip's Overall (Lumetri Basic Correction); Paste sets it on the clips selected in the timeline
   // (the source clip is skipped). Skin / green Color Shift: Premiere's Color tab, Copy Grade / Paste Grade.
@@ -815,9 +976,9 @@
   // ---------------- grade reference: final grade values + a compact still, in one action ----------------
   // Team copy: Final Output / Stills / <clip>_REF.jpg (1920 px). Learning copy: 320 px JPEG in ~/UAI Luma Cut/learning/thumbs.
   function finalOutputDir() {
-    if (state.client) return path.join(state.client.dir, state.client.outRel);
-    if (!state.info || !state.info.open) return '';
-    var clientDir = path.dirname(path.dirname(state.info.projectPath));
+    if (!state.info || !state.info.open) return state.client ? path.join(state.client.dir, state.client.outRel) : '';
+    var clientDir = clientDirOf(state.info.projectPath);
+    if (state.client && clientDir === state.client.dir) return path.join(state.client.dir, state.client.outRel);
     return path.join(clientDir, subdir(clientDir, /^final[ _-]?outputs?$/i) || 'Final Output');
   }
   function stillsDir() { var f = finalOutputDir(); return f ? path.join(f, 'Stills') : ''; }
@@ -827,9 +988,20 @@
       cp.execFile('/usr/bin/sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', String(quality), '-Z', String(size), src, '--out', out], function (err) { resolve(!err && fs.existsSync(out)); });
     });
   }
+  // the client of the project that is OPEN (not the folder last picked in Build): reviews and references are kept per client
+  function clientDirOf(projectPath) {
+    if (state.client && String(projectPath).toLowerCase().indexOf(state.client.dir.toLowerCase() + '/') === 0) return state.client.dir;
+    var d = path.dirname(projectPath);
+    for (var up = 0; up < 3 && d && d !== path.dirname(d); up++) {
+      if (isAc(d) || subdir(d, /^raw/i) || subdir(d, /^final[ _-]?outputs?$/i)) return d;
+      d = path.dirname(d);
+    }
+    d = path.dirname(projectPath);
+    return /^(project ?files?|source|project)$/i.test(path.basename(d)) ? path.dirname(d) : d;
+  }
   function batchMeta() {
-    var name = state.client ? state.client.name : path.basename(state.info.projectPath, '.prproj').replace(/_GRADED$/, '');
-    return { key: name, client: name, ac: state.client ? state.client.ac : /(^|[^A-Za-z])AC\s*#?\s*\d+/i.test(state.info.projectPath), project: state.info.projectPath };
+    var dir = clientDirOf(state.info.projectPath), name = clientName(dir);
+    return { key: name, client: name, ac: isAc(dir), project: state.info.projectPath };
   }
   $('rref').addEventListener('click', async function () {
     if (state.busy) return;

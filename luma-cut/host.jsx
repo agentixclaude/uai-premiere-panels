@@ -371,6 +371,36 @@ function lcKeyTargets(scope) {
         return '[' + out.join(',') + ']';
     } catch (e) { return lcErr(e); }
 }
+// ---------------- Light check: one clip at a time ----------------
+// Clips in scope with a mid-clip frame and their current Lumetri values: [{seqId, index, name, ticks, values}]
+function lcLightTargets(scope) {
+    try {
+        var t = lcScope(scope), out = [], seen = {};
+        for (var i = 0; i < t.length; i++) {
+            var c = t[i].clip, k = t[i].seq.sequenceID + '|' + t[i].index;
+            if (seen[k]) { continue; }
+            seen[k] = true;
+            var mid = Math.round((Number(c.start.ticks) + Number(c.end.ticks)) / 2);
+            out.push('{"seqId":"' + lcEsc(t[i].seq.sequenceID) + '","index":' + t[i].index + ',"name":"' + lcEsc(c.name) + '","ticks":"' + mid + '","values":' + (lcValuesJson(c) || 'null') + '}');
+        }
+        return '[' + out.join(',') + ']';
+    } catch (e) { return lcErr(e); }
+}
+// relative nudge on ONE clip (csv in LC_KEYS order, "x" = leave); returns its new values
+function lcNudgeAt(seqId, index, csv) {
+    try {
+        var s = lcSeqById(seqId); if (!s) { return '{"error":"sequence not found"}'; }
+        var c = s.videoTracks[0].clips[index], l = c ? lcLumetri(c) : null;
+        if (!l) { return '{"error":"no Lumetri on this clip"}'; }
+        var d = String(csv).split(','), b = lcBasic(l);
+        for (var k = 0; k < LC_KEYS.length; k++) {
+            if (d[k] === 'x' || d[k] === undefined || d[k] === '' || !b[LC_KEYS[k]]) { continue; }
+            var lim = LC_LIMITS[LC_KEYS[k]], v = lcRound(b[LC_KEYS[k]].getValue() + parseFloat(d[k]));
+            b[LC_KEYS[k]].setValue(Math.max(lim[0], Math.min(lim[1], v)), true);
+        }
+        return lcValuesJson(c);
+    } catch (e) { return lcErr(e); }
+}
 function lcSeqById(id) {
     var p = app.project;
     for (var i = 0; i < p.sequences.numSequences; i++) { if (p.sequences[i].sequenceID === id) { return p.sequences[i]; } }

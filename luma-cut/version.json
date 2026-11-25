@@ -1,1 +1,1 @@
-{"version": "1.6.0", "notes": "Undo / Redo buttons (and Cmd+Z inside the panel); About shows New updates with date, time and before → now"}
+{"version": "1.7.0", "notes": "Light check: measures each clip's graded frame and corrects exposure and colour to your approved grades; reviews now saved under the client project that is open"}
