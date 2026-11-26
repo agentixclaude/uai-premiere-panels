@@ -1,18 +1,38 @@
-"""Where the talk to camera really starts and ends, from a transcript of the first and last 30 s.
+"""Where the real talk to camera starts and ends (engine v3, 2026-11-26).
 
-The audio level finds every sound; the words tell which of them belong to the take. Before the first line people
-say "ready?", "rolling", "okay" or count in; after the last line they ask "was that good?", say "cut", laugh or talk
-to the crew. Those bits sit apart from the delivery (a gap of >= 1.2 s) and are short, or are known cue words.
+The audio finds every sound; the words decide which of them belong to the take.
+Before the first line people count in ("3, 2, 1", "5 4 3 2 in action"), take instructions ("again, a little
+slower this time", "ready?", "start"), apologise ("hold on, I goofed up") or mumble. After the last line they say
+"I'm done", "close my mouth", "sign off", "okay so I'm about ready to finish", "was that good?", "cut" or count out.
 
-Uses faster-whisper (CPU, int8) when it is installed; without it the trim stays audio + face only.
-script_bounds(path, dur) -> {start, end, first_words, last_words, dropped_head, dropped_tail} | None"""
+IN anchor  = first word of the delivery. Preferred openers: Hi / Hey / Hello / My name (strong), I'm / I (weak).
+OUT anchor = last word before the closing remarks.
+
+Uses faster-whisper (CPU, int8). bounds(path, dur) -> dict | None"""
 import os, re, subprocess, numpy as np
 
-MODEL = os.environ.get('LUMACUT_WHISPER', 'base.en')
-EDGE = 20.0
-GAP = 1.2
-HEAD_CUES = re.compile(r"\b(ready|rolling|roll|action|speed|mark|go ahead|whenever|okay|ok|alright|all right|one two three|three two one|3 2 1|start)\b", re.I)
-TAIL_CUES = re.compile(r"\b(cut|was that (good|ok|okay|fine|alright)|how was (that|it)|is that (good|ok|okay)|did (that|it) work|one more|again|okay|ok|alright|all right|done|that's it)\b", re.I)
+MODEL = os.environ.get('LUMACUT_WHISPER', 'tiny.en')
+EDGE = 25.0
+CLAUSE_GAP = 0.6           # a pause this long ends a clause
+RUN_GAP = 1.2              # a pause this long sets a mumble apart from the delivery
+NUMS = {'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'}
+FILLER = {'and', 'so', 'okay', 'ok', 'alright', 'all', 'right', 'um', 'uh', 'that', 'yeah', 'well', 'but', 'now',
+          "i'm", 'im', 'going', 'to', 'gonna', 'let', 'me'}   # stripped from the end of what is kept before a closing remark
+HEAD_META = re.compile(r"\b(action|rolling|roll it|ready|speed|start|starting|again|slower|faster|this time|hold on|wait|"
+                       r"sorry|goofed|messed up|my bad|take (two|three|four|\d)|one more|go ahead|go|yeah|yep|okay|ok|"
+                       r"alright|all right|in|countdown|count)\b")
+STRONG = re.compile(r"^(hi|hey|hello|good (morning|afternoon|evening)|my name)\b")
+WEAK = re.compile(r"^(i'm|i am|i|im)\b")
+TAIL_META = [re.compile(x) for x in (
+    r"\b(and )?(i'm|i am|im) (done|finished)\b", r"\bclos(e|ing) (my mouth|up)\b", r"\b(put )?(my )?hands? (back|down)\b",
+    r"\bsign(ing)? off\b", r"\b(i'm |i am )?(about |almost )?ready to (finish|stop|end)\b", r"\bfinish(ing)? up\b",
+    r"\bwhat am i doing\b", r"\bdo i need to\b", r"\b(i'm )?(going to |gonna )?go back\b", r"\b(i'm )?(going to |gonna )?keep going\b",
+    r"\b(was|is) (that|it) (good|ok|okay|fine|alright|all right)\b", r"\bhow (was|is) (that|it)\b", r"\bone more\b", r"\bcut\b",
+    r"\b(one|1) (two|2)\b", r"\blet me (smile|finish|start|do|stop)\b", r"\bthat's a wrap\b")]
+CREW = re.compile(r"^(so |and )?(perfect|great|good|nice|awesome|beautiful|excellent|got it|that's good|that was good|okay|ok|"
+                  r"alright|all right|so|cool|yes|yeah|thank you okay|so all right|so alright)( \w+)?$")   # short last words, often the crew
+SHORT_TAIL_META = re.compile(r"\b(okay|ok|alright|all right),? (so|well)\b")   # only in a short clause; long ones carry real talk
 _model = None
 
 
@@ -43,50 +63,121 @@ def _words(p, t0, t1):
     out = []
     for s in segs:
         for w in (s.words or []):
-            out.append(dict(w=w.word.strip(), s=t0 + w.start, e=t0 + w.end))
+            t = w.word.strip()
+            if t: out.append(dict(w=t, s=t0 + w.start, e=t0 + w.end))
     return out
 
 
-def _groups(words):
-    """Split words into phrases at gaps >= GAP."""
-    g = []
+def norm(w): return re.sub(r"[^a-z0-9']", '', w['w'].lower().replace('’', "'"))
+
+
+def clauses(words):
+    """Split at punctuation or a pause >= CLAUSE_GAP."""
+    out = []
     for w in words:
-        if g and w['s'] - g[-1][-1]['e'] < GAP: g[-1].append(w)
-        else: g.append([w])
-    return g
+        if out and not re.search(r'[.?!,;:]$', out[-1][-1]['w']) and w['s'] - out[-1][-1]['e'] < CLAUSE_GAP: out[-1].append(w)
+        else: out.append([w])
+    return out
 
 
-def _text(g): return ' '.join(w['w'] for w in g)
+def text(c): return ' '.join(norm(w) for w in c).strip()
 
 
-def script_bounds(p, dur):
+def raw(c): return ' '.join(w['w'] for w in c)
+
+
+def numbers_only(c): return all(norm(w) in NUMS for w in c)
+
+
+def meta_head(c):
+    t = text(c)
+    if numbers_only(c): return True
+    return len(c) <= 8 and bool(HEAD_META.search(t)) and not STRONG.search(t)
+
+
+HARD = re.compile(r"\b(action|rolling|ready|speed|go ahead|and go|let's go|here we go|start now|you're going|we're going)\b")
+
+
+def count_in(c):
+    """A clause that holds a count (two or more numbers, or a number with a cue word)."""
+    n = sum(1 for w in c if norm(w) in NUMS)
+    return n >= 2 or (n >= 1 and len(c) <= 4)
+
+
+def head_start(words):
+    """Index of the first word of the delivery, and what was dropped before it."""
+    cl = clauses(words)
+    if not cl: return None
+    # everything up to the LAST slate / count-in / "ready?" in the first 15 s is not the take
+    cut = 0
+    for i, c in enumerate(cl):
+        if c[0]['s'] > 15: break
+        if len(c) <= 8 and (HARD.search(text(c)) or count_in(c)): cut = i + 1
+    if 0 < cut < len(cl):
+        off = sum(len(c) for c in cl[:cut])
+        r = head_start(words[off:]) if any(not meta_head(c) for c in cl[cut:]) else 0
+        return off + (r or 0)
+    starts = [0]
+    for c in cl[:-1]: starts.append(starts[-1] + len(c))
+
+    def ok_before(i):
+        before = cl[:i]
+        if not before: return True
+        if all(meta_head(b) for b in before): return True
+        gap = cl[i][0]['s'] - before[-1][-1]['e']
+        return gap >= RUN_GAP and sum(len(b) for b in before) <= 15
+
+    for rx in (STRONG, WEAK):
+        for i, c in enumerate(cl):
+            if c[0]['s'] > EDGE - 3: break
+            if rx.search(text(c)) and not meta_head(c) and ok_before(i): return starts[i]
+    for i, c in enumerate(cl):
+        if not meta_head(c): return starts[i]
+    return 0
+
+
+def tail_end(words):
+    """Index (exclusive) after the last word of the delivery."""
+    cl = clauses(words)
+    if not cl: return None
+    n = len(words)
+    for c in reversed(cl):
+        t = text(c); toks = t.split()
+        if numbers_only(c) or (len(c) <= 3 and CREW.search(t)):
+            n -= len(c); continue
+        k = None
+        for rx in TAIL_META + ([SHORT_TAIL_META] if len(c) <= 8 else []):
+            m = rx.search(t)
+            if m:
+                wi = len(t[:m.start()].split())
+                k = wi if k is None else min(k, wi)
+        if k is None: return n
+        keep = c[:k]
+        while keep and norm(keep[-1]) in FILLER: keep = keep[:-1]
+        # only a few words kept and no pause before the closing remark: they belong to it, the whole clause goes
+        if keep and len(keep) <= 4 and c[len(keep)]['s'] - keep[-1]['e'] < 0.25: keep = []
+        if keep: return n - len(c) + len(keep)
+        n -= len(c)
+    return n
+
+
+def bounds(p, dur):
     if not available(): return None
     head = _words(p, 0, min(dur, EDGE))
     tail = _words(p, max(0, dur - EDGE), dur) if dur > EDGE else head
     if not head or not tail: return None
-    dropped_head, dropped_tail = [], []
-    head_prev = tail_next = None
-    # slate words said in one breath with the take: "... five, four, three, two, action. <first line>" / "<last line> ... cut"
-    norm = lambda w: re.sub(r'[^a-z]', '', w['w'].lower())
-    for i in range(len(head) - 1, -1, -1):
-        if norm(head[i]) in ('action', 'rolling') and i + 1 < len(head):
-            dropped_head.append(' '.join(w['w'] for w in head[:i + 1])); head_prev = head[i]['e']; head = head[i + 1:]; break
-    for i in range(len(tail)):
-        if norm(tail[i]) == 'cut' and i > 0:
-            dropped_tail.append(' '.join(w['w'] for w in tail[i:])); tail_next = tail[i]['s']; tail = tail[:i]; break
-    # count-in said in one breath with the take ("three, two, one, <first line>"): descending numbers, at least two
-    NUM = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10}
-    k = 0
-    while k < len(head) - 1 and norm(head[k]) in NUM and (k == 0 or NUM[norm(head[k])] < NUM[norm(head[k - 1])]): k += 1
-    if k >= 2:
-        dropped_head.append(' '.join(w['w'] for w in head[:k])); head_prev = head[k - 1]['e']; head = head[k:]
-    hg, tg = _groups(head), _groups(tail)
-    # leading / trailing phrases that are cues or a word or two, set apart by a gap
-    while len(hg) > 1 and (HEAD_CUES.search(_text(hg[0])) and len(hg[0]) <= 6 or len(hg[0]) <= 2):
-        g = hg.pop(0); dropped_head.append(_text(g)); head_prev = max(head_prev or 0, g[-1]['e'])
-    while len(tg) > 1 and (TAIL_CUES.search(_text(tg[-1])) and len(tg[-1]) <= 8 or len(tg[-1]) <= 2):
-        g = tg.pop(); dropped_tail.insert(0, _text(g)); tail_next = min(tail_next or 1e9, g[0]['s'])
-    first, last = hg[0], tg[-1]
-    return dict(start=first[0]['s'], end=last[-1]['e'],
-                first_words=_text(first)[:80], last_words=_text(last)[-80:],
-                dropped_head=dropped_head, dropped_tail=dropped_tail, head_prev=head_prev, tail_next=tail_next)
+    i = head_start(head); j = tail_end(tail)
+    if i is None or j is None or i >= len(head) or j <= 0: return None
+    first, last = head[i], tail[j - 1]
+    return dict(start=first['s'], end=last['e'],
+                first_words=raw(head[i:i + 8]), last_words=raw(tail[max(0, j - 8):j]),
+                dropped_head=raw(head[:i]), dropped_tail=raw(tail[j:]),
+                head_prev=head[i - 1]['e'] if i > 0 else None, tail_next=tail[j]['s'] if j < len(tail) else None,
+                full_end=tail[-1]['e'])
+
+
+# kept for older callers
+def script_bounds(p, dur):
+    b = bounds(p, dur)
+    if b: b = dict(b, dropped_head=[b['dropped_head']] if b['dropped_head'] else [], dropped_tail=[b['dropped_tail']] if b['dropped_tail'] else [])
+    return b

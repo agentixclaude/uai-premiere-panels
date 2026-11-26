@@ -16,7 +16,7 @@ DEPS = os.environ.get('LUMACUT_DEPS', os.path.expanduser('~/.lumacut_deps'))
 for p in (DEPS, '/tmp/mp10', HERE):
     if p not in sys.path: sys.path.insert(0, p)
 HOUSE = dict(Exposure=0.0, Contrast=19.0, Highlights=8.0, Shadows=-6.0, Saturation=108.0, Tint=2.0, Temperature=0.0)
-PRE, POST = 0.80, 0.60
+PRE, POST = 0.80, 0.60   # fallback only, when a clip has no face result
 WORKERS = max(1, min(3, (os.cpu_count() or 2) // 2))
 
 
@@ -81,9 +81,16 @@ def apply_priors(name, g, pri):
     return g
 
 
-def _analyse(src, work):
+def _analyse(src, work, rot=None):
     import trim
-    return trim.run(src, work)
+    return trim.run(src, work, rot)
+
+
+def proxy_for(cdir, c):
+    """<client>/Proxies/<name>_Proxy.mov (frame-exact 1080p copy) when it exists: ~2.5x faster than the 8K original."""
+    rel = os.path.dirname(c.get('rel', c['file'])).split(os.sep)[1:]
+    p = os.path.join(cdir, 'Proxies', *rel, os.path.splitext(c['file'])[0] + '_Proxy.mov')
+    return p if os.path.exists(p) and os.path.getsize(p) > 0 else None
 
 
 def main(request_path, budget):
@@ -103,7 +110,7 @@ def main(request_path, budget):
     with ProcessPoolExecutor(WORKERS) as ex:
         while todo and time.time() - t0 <= budget:
             batch, todo = todo[:WORKERS], todo[WORKERS:]
-            futs = [(c, ex.submit(_analyse, os.path.join(cdir, c['rel']), work)) for c in batch]
+            futs = [(c, ex.submit(_analyse, proxy_for(cdir, c) or os.path.join(cdir, c['rel']), work, c.get('rot'))) for c in batch]
             for c, f in futs:
                 name = os.path.splitext(c['file'])[0]
                 try: res = f.result()
@@ -130,10 +137,7 @@ def main(request_path, budget):
         fo = res['out']['frame'] if isinstance(res.get('out'), dict) else so
         fi, fo = max(0, min(frames - 1, int(fi))), max(0, min(frames - 1, int(fo)))
         if fo <= fi: fi, fo = 0, frames - 1; flags.append('trim failed - set IN/OUT by hand')
-        sbd = res.get('speech')
-        if sbd and isinstance(res.get('out'), dict):   # approved learned rule: OUT 0.5 s earlier, never closer than 0.15 s after the last word
-            floor_f = round((sbd['end'] + 0.15) * fps)
-            if fo > floor_f: fo = max(floor_f, fo - round(0.5 * fps))
+        # engine v3: OUT used as found (the 'OUT 0.5 s earlier' rule is withdrawn: on AC#13 the user moved OUTs later)
         g = grades.get(name, {}).get('grade', HOUSE)
         g = apply_priors(name, g, pri)
         if abs(g.get('Exposure', 0)) > 0.6:
@@ -142,7 +146,7 @@ def main(request_path, budget):
         clips.append(dict(file=c['file'], path=c['path'], w=c['w'], h=c['h'], rot=c['rot'], fps=fps, frames=frames,
                           **{'in': fi}, out=fo, flag='; '.join(flags), grade=g, group=_group(name)))
     plan = dict(version=1, source='claude', requestId=req['requestId'], client=req['client'],
-                createdAt=time.strftime('%Y-%m-%dT%H:%M:%S'), engine='engine v2.1: transcript + audio + face (10 s look-back, best pause frame), grade priors once, OUT -0.5 s, exposure limit +-0.6', clips=clips)
+                createdAt=time.strftime('%Y-%m-%dT%H:%M:%S'), engine='engine v3: transcript openers + count-in / closing-remark drop; face, mouth, teeth, eyes, hands, still held 3 frames; no IN into the speech; grade priors once, exposure limit +-0.6', clips=clips)
     out = os.path.join(os.path.dirname(os.path.abspath(request_path)), 'luma_plan.json')
     write_atomic(out, plan)
     print(json.dumps(dict(status='plan written', path=out, clips=len(clips), flagged=sum(1 for x in clips if x['flag']))))

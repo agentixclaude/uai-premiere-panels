@@ -1,32 +1,35 @@
-"""Head/tail trim finder (v2, 2026-11-24). Cuts only the start and end pause.
+"""Head/tail trim finder (engine v3, 2026-11-26). Cuts only the start and end pause.
 
-IN / OUT frame rule: face toward the camera, head still, mouth CLOSED, eyes OPEN, held for >= 3 frames.
-Audio finds the first / last word; the face decides the frame.
-
-End of a take (and its start, mirrored): after the last word people often stand up, look aside, reach for the
-mic or talk to the crew. So the tail pause is checked with the face first; if the person moves or turns away,
-the OUT stops before that moment. If the movement starts before the audio ends (crew talk picked up as speech),
-the OUT is searched up to 10 s before the last sound, on the last steady, closed-mouth frame, and flagged.
-
-Speed: a coarse face scan at 10 fps on a small frame, then only the chosen ~0.6 s is decoded at full rate.
-The 10 s look-back is decoded only when the short pause window has no usable frame.
+1. Audio + transcript: where the real talk starts and ends (transcript.py drops count-ins, take instructions,
+   apologies and closing remarks). IN anchor = first word of the delivery (Hi / Hey / I'm / I ...), OUT anchor = last
+   word of the delivery. The IN never goes into the speech, and never before the count-in / instruction has ended.
+2. Picture: every frame of the pause is checked, and a frame counts only when ALL pass, held >= 3 frames:
+   face toward the camera, head still, mouth closed, no teeth showing, eyes open, hands in a rest position (still).
+   IN is searched 0.25-3 s before the first word (up to 5 s when nothing passes), OUT 0.15-3 s after the last word
+   (up to 5 s), stopping before the person stands up / looks aside / the next sound.
+3. Nothing passes: the best frame of the pause (fewest failed checks, nearest the usual gap), flagged REVIEW with the
+   failed checks named.
+The panel adds the clean edge (body cut 2 frames wider, markers / export 2 frames inside), so these frames are the
+first and last frames that get exported.
 
 Usage: python3 trim.py clip.MP4 out_dir"""
 import sys, os, json, subprocess, platform, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import face
 
-# Learned from 40 finished client outputs: editors leave ~0.8 s before the first word (p10 0.5 / p90 1.6)
-# and ~0.6 s after the last word (p10 0.16 / p90 1.4).
-PRE, POST = 0.80, 0.60
-PRE_RANGE, POST_RANGE = (0.40, 1.60), (0.15, 1.40)
-LOOKBACK = 10.0            # how far before the last word (or after the first) a frame may be searched
+ENGINE = 'trim v3 (transcript openers + count-in/closing-remark drop; face + mouth + teeth + eyes + hands + still, all held 3 frames; no IN into the speech)'
+PRE_T, POST_T = 0.80, 0.60          # usual gap before the first / after the last word (40 finished outputs)
+IN_WIN, OUT_WIN = (0.25, 3.0), (0.15, 3.0)
+EXT = 5.0                            # wider search when nothing passes in the normal window
+SAFE = 0.15                          # keep this far from a dropped count-in / closing remark
 MOUTH_GAP, EAR_MIN, EAR_REL = 0.008, 0.18, 0.65
-YAW_MAX = 0.22             # nose offset from the eye-centre / eye distance; > this = looking aside
-MOVE_MAX = 0.06            # face-centre travel per 0.1 s / face height; > this = standing up, leaning, walking off
-BREAK_HOLD = 0.3           # a turn / move must last this long to count (blinks and nods don't)
+TEETH_MAX = 0.08                     # share of the inner-lip outline that looks like teeth
+YAW_MAX = 0.22
+MOVE_MAX = 0.06                      # face-centre travel per 0.1 s / face height
+HAND_MOVE = 0.25                     # wrist travel per 0.1 s / torso height
+BREAK_HOLD = 0.3
 HOLD = 3
-COARSE_FPS, COARSE_W, FINE_W = 10, 960, 1280
+FINE_W = 1920                         # proxies are 1920 wide; the face is cropped from the full frame
 
 
 def probe(p):
@@ -34,259 +37,285 @@ def probe(p):
     s = o['streams'][0]; n, d = map(int, s['r_frame_rate'].split('/'))
     rot = 0
     for sd in s.get('side_data_list', []): rot = int(sd.get('rotation', 0) or rot)
+    rot = int(s.get('tags', {}).get('rotate', 0) or 0) or rot
     w, h = s['width'], s['height']
     if abs(rot) % 180 == 90: w, h = h, w
     return dict(w=w, h=h, fps=n / d, fpsn=n, fpsd=d, dur=float(o['format']['duration']), rot=rot)
 
 
-def speech_bounds(p):
-    """First / last word (0.5 s window rule), plus the nearest other sound outside them."""
-    a = np.frombuffer(subprocess.check_output(['ffmpeg', '-v', 'error', '-nostdin', '-i', p, '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', '-']), np.int16).astype(np.float32) / 32768
-    hop = 320; n = len(a) // hop; r = np.sqrt((a[:n * hop].reshape(n, hop) ** 2).mean(1)) + 1e-9; db = 20 * np.log10(r)
-    floor = np.percentile(db, 10); talk = np.percentile(db, 90); thr = max(floor + 12, talk - 25, -50)
-    sp = db > thr; k = int(0.5 / 0.02)
-    run = np.convolve(sp.astype(int), np.ones(k, int), 'valid') >= int(k * 0.7)
-    idx = np.where(run)[0]
-    if len(idx) == 0: return None
-    first, last = int(idx[0]), int(idx[-1])
-    a0, b0 = first, min(len(sp) - 1, last + k - 1)
-    while a0 < b0 and not sp[a0]: a0 += 1
-    while b0 > a0 and not sp[b0]: b0 -= 1
-    nxt = prv = None; run_ = 0
-    for x in range(b0 + 1, len(sp)):
-        run_ = run_ + 1 if sp[x] else 0
-        if run_ >= 3: nxt = (x - 2) * 0.02; break
-    run_ = 0
-    for y in range(a0 - 1, -1, -1):
-        run_ = run_ + 1 if sp[y] else 0
-        if run_ >= 3: prv = (y + 3) * 0.02; break
-    return dict(start=first * 0.02, end=(last + k) * 0.02, next_sound=nxt, prev_sound=prv, floor_db=float(floor), thr_db=float(thr))
+class Audio:
+    """Loudness every 20 ms; onset / offset search around a word time."""
+    def __init__(self, p):
+        a = np.frombuffer(subprocess.check_output(['ffmpeg', '-v', 'error', '-nostdin', '-i', p, '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', '-']),
+                          np.int16).astype(np.float32) / 32768
+        hop = 320; n = len(a) // hop
+        r = np.sqrt((a[:n * hop].reshape(n, hop) ** 2).mean(1)) + 1e-9; self.db = 20 * np.log10(r)
+        floor = np.percentile(self.db, 10); talk = np.percentile(self.db, 90)
+        self.thr = max(floor + 12, talk - 25, -50); self.sp = self.db > self.thr
+
+    def t(self, i): return i * 0.02
+
+    def i(self, t): return int(max(0, min(len(self.sp) - 1, round(t / 0.02))))
+
+    def bounds(self):
+        k = 25; run = np.convolve(self.sp.astype(int), np.ones(k, int), 'valid') >= int(k * 0.7)
+        idx = np.where(run)[0]
+        if len(idx) == 0: return None
+        return dict(start=self.t(idx[0]), end=self.t(idx[-1] + k))
+
+    def onset(self, t, back=0.4, fwd=0.15):
+        """Start of the sound the word at t belongs to (whisper times drift by ~0.1-0.2 s)."""
+        i, lo, hi = self.i(t), self.i(t - back), self.i(t + fwd)
+        if not self.sp[i]:
+            while i < hi and not self.sp[i]: i += 1
+            if not self.sp[i]: return t
+        while i > lo and self.sp[i - 1]: i -= 1
+        return self.t(i)
+
+    def offset(self, t, fwd=0.5, back=0.1):
+        i = self.i(t - back); hi = self.i(t + fwd)
+        while i < hi and self.sp[i]: i += 1
+        return self.t(i)
+
+    def next_sound(self, t):
+        run = 0
+        for x in range(self.i(t), len(self.sp)):
+            run = run + 1 if self.sp[x] else 0
+            if run >= 3: return self.t(x - 2)
+        return None
+
+    def prev_sound(self, t):
+        run = 0
+        for y in range(self.i(t), -1, -1):
+            run = run + 1 if self.sp[y] else 0
+            if run >= 3: return self.t(y + 3)
+        return None
 
 
 def _hw():
     return ['-hwaccel', 'videotoolbox'] if platform.system() == 'Darwin' else []
 
 
-def frames(p, t0, t1, info, W, fps=None):
-    """Decode [t0, t1] scaled to width W; every frame, or `fps` frames per second. Returns (frames, times)."""
-    t0 = max(0.0, t0); t1 = min(info['dur'], t1)
-    if t1 <= t0: return np.zeros((0, 2, 2, 3), np.uint8), []
-    if info['h'] > info['w']: W = min(W, 720)   # vertical 8K: small decode, else out of memory
-    H = int(round(W * info['h'] / info['w'] / 2)) * 2
-    vf = (f'fps={fps},' if fps else '') + f'scale={W}:{H}:flags=fast_bilinear'
-    cmd = ['ffmpeg', '-v', 'error', '-nostdin', '-threads', '4'] + _hw() + ['-ss', f'{t0:.3f}', '-i', p, '-t', f'{t1 - t0:.3f}',
+def _dims(info, W):
+    W = min(W, info['w'])
+    if info['h'] > info['w']: W = min(W, 1080)  # vertical: picture as seen (after transpose)
+    return W, int(round(W * info['h'] / info['w'] / 2)) * 2
+
+
+def stream(p, info, t0, t1, fn, W=FINE_W, fps=None):
+    """Decode [t0, t1] frame by frame (no big buffer); fn(frame_index, time, rgb)."""
+    step = info['fpsd'] / info['fpsn']
+    f0 = max(0, int(round(t0 / step))); f1 = min(int(info['dur'] / step) - 1, int(round(t1 / step)))
+    if f1 < f0: return
+    W, H = _dims(info, W)
+    vf = (f'fps={fps},' if fps else '') + (info['tr'] + ',' if info.get('tr') else '') + f'scale={W}:{H}:flags=fast_bilinear'
+    cmd = ['ffmpeg', '-v', 'error', '-nostdin', '-threads', '4'] + _hw() + ['-ss', f'{f0 * step:.4f}', '-i', p,
+           '-frames:v', str((f1 - f0 + 1) if not fps else int((f1 - f0 + 1) * step * fps) + 1),
            '-vf', vf, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']
-    try: raw = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        if not _hw(): raise
-        raw = subprocess.check_output([c for c in cmd if c not in ('-hwaccel', 'videotoolbox')])
-    f = np.frombuffer(raw, np.uint8).reshape(-1, H, W, 3)
-    step = 1.0 / (fps or info['fps'])
-    return f, [t0 + i * step for i in range(len(f))]
+    pr = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    sz = W * H * 3; k = 0
+    while True:
+        b = pr.stdout.read(sz)
+        if len(b) < sz: break
+        fi = f0 + k if not fps else f0 + int(round(k / fps / step))
+        fn(fi, fi * step, np.frombuffer(b, np.uint8).reshape(H, W, 3)); k += 1
+    pr.stdout.close(); pr.wait()
 
 
-def keytimes(p, t0, t1):
-    """Keyframe times in [t0, t1] from the packet index (no decoding)."""
-    out = subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time,flags',
-                                   '-read_intervals', f'{max(0, t0):.3f}%{t1:.3f}', '-of', 'csv=p=0', p]).decode()
-    ts = []
-    for line in out.splitlines():
-        parts = line.split(',')
-        if len(parts) >= 2 and 'K' in parts[1]:
-            try:
-                t = float(parts[0])
-                if t0 - 0.01 <= t <= t1 + 0.01: ts.append(t)
-            except ValueError: pass
-    return sorted(set(ts))
+def one_frame(p, info, fi, W=1280):
+    out = []
+    stream(p, info, fi * info['fpsd'] / info['fpsn'], fi * info['fpsd'] / info['fpsn'], lambda i, t, x: out.append(x.copy()), W=W)
+    return out[0] if out else None
 
 
-def scan(p, info, t0, t1, W=COARSE_W):
-    """Coarse look: keyframes only (about one per second on these cameras), so a 12 s window costs little."""
-    t0 = max(0.0, t0); t1 = min(info['dur'], t1)
-    face.reset()
-    if info['h'] > info['w']: W = min(W, 720)
-    H = int(round(W * info['h'] / info['w'] / 2)) * 2
-    cmd = ['ffmpeg', '-v', 'error', '-nostdin', '-threads', '4'] + _hw() + ['-discard', 'nokey', '-ss', f'{t0:.3f}', '-i', p,
-           '-t', f'{t1 - t0:.3f}', '-vf', f'scale={W}:{H}:flags=fast_bilinear', '-vsync', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']
-    try: raw = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        raw = subprocess.check_output([c for c in cmd if c not in ('-hwaccel', 'videotoolbox')], stderr=subprocess.DEVNULL)
-    fr = np.frombuffer(raw, np.uint8).reshape(-1, H, W, 3)
-    kt = keytimes(p, t0, t1)
-    if len(kt) != len(fr):    # fall back to even spacing if the index and the decoder disagree
-        kt = list(np.linspace(t0, t1, len(fr), endpoint=False)) if len(fr) else []
-    return [face.state(x) for x in fr], kt, fr
-
-
-def fine(p, info, t0, t1):
-    face.reset()
-    fr, ts = frames(p, t0, t1, info, FINE_W)
-    return [face.state(x) for x in fr], ts, fr
-
-
-def calibrate(states):
-    g = np.array([s['gap'] for s in states if s]); e = [s['ear'] for s in states if s]
+def calibrate(p, info, t0, t1):
+    """Mouth rest / open levels and normal eye opening from the talk next to the pause (5 frames a second)."""
+    face.reset(); st = []
+    stream(p, info, t0, t1, lambda i, t, x: st.append(face.state(x)), fps=5)
+    g = np.array([s['gap'] for s in st if s]); e = [s['ear'] for s in st if s]
     if len(g) < 5: return None
     base = float(np.percentile(g, 5)); opn = float(np.percentile(g, 90))
-    thr = base + 0.35 * (opn - base) if opn - base > 0.01 else base + 0.008
-    return dict(closed_thr=round(float(min(max(thr, MOUTH_GAP), 0.03)), 4), rest=round(base, 4), open=round(opn, 4), eye_ref=round(float(np.median(e)), 3))
+    thr = base + 0.30 * (opn - base) if opn - base > 0.01 else base + 0.008
+    return dict(closed_thr=round(float(min(max(thr, MOUTH_GAP), 0.025)), 4), rest=round(base, 4), open=round(opn, 4), eye_ref=round(float(np.median(e)), 3))
 
 
-def presenter(states, ts):
-    """Per sample: face found, toward the camera, head still."""
-    ok = []
-    for i, s in enumerate(states):
-        good = s is not None and abs(s.get('yaw', 0)) <= YAW_MAX
-        if good and i > 0 and states[i - 1] is not None:
-            dt = max(1e-3, ts[i] - ts[i - 1]) / 0.1
-            good = face.moved(s, states[i - 1]) / dt <= MOVE_MAX
-        ok.append(bool(good))
-    return ok
+def face_fails(s, cal):
+    if s is None: return ['no face']
+    f = []
+    if abs(s.get('yaw', 0)) > YAW_MAX: f.append('looking aside')
+    if s['gap'] >= cal['closed_thr']: f.append('mouth open')
+    if s.get('teeth', 0) > TEETH_MAX: f.append('teeth showing')
+    if s['ear'] <= EAR_MIN or s['ear'] <= EAR_REL * cal['eye_ref']: f.append('eyes closed')
+    return f
 
 
-def breaks(ok, ts):
-    """Times where presenter() is false for >= BREAK_HOLD (a real turn / stand-up, not a blink)."""
-    out, i = [], 0
-    while i < len(ok):
-        if not ok[i]:
-            j = i
-            while j < len(ok) and not ok[j]: j += 1
-            if ts[min(j, len(ts) - 1)] - ts[i] >= BREAK_HOLD or j == len(ok): out.append((ts[i], ts[min(j, len(ts) - 1)]))
-            i = j
-        else: i += 1
-    return out
+def window(p, info, t0, t1, cal):
+    """Every frame in [t0, t1]: face state, and hands for frames whose face already passes."""
+    face.reset(); rows = []
+
+    def fn(fi, t, x):
+        s = face.state(x); r = dict(f=fi, t=t, s=s, fails=face_fails(s, cal))
+        if not r['fails']: r['h'] = face.hands(x, s)
+        rows.append(r)
+    stream(p, info, t0, t1, fn)
+    # head still / hands still / hands at rest, from neighbours
+    for k, r in enumerate(rows):
+        if r['s'] is None: continue
+        q = rows[k - 1] if k else None
+        if q and q['s'] is not None:
+            dt = max(1e-3, r['t'] - q['t']) / 0.1
+            if face.moved(r['s'], q['s']) / dt > MOVE_MAX: r['fails'].append('head moving')
+        h = r.get('h')
+        if h:
+            if h.get('hands') == 'raised': r['fails'].append('hands raised')
+            if q and q.get('h'):
+                for w in ('lw', 'rw'):
+                    if w in h and w in q['h']:
+                        d = np.hypot(h[w][0] - q['h'][w][0], h[w][1] - q['h'][w][1]) / max(h.get('torso', 1), 1)
+                        if d / (max(1e-3, r['t'] - q['t']) / 0.1) > HAND_MOVE: r['fails'].append('hands moving'); break
+    return rows
 
 
-def good_frame(s, cal):
-    return (s is not None and s['gap'] < cal['closed_thr'] and s['ear'] > EAR_MIN and s['ear'] > EAR_REL * cal['eye_ref']
-            and abs(s.get('yaw', 0)) <= YAW_MAX)
-
-
-def refine(p, info, t, side, cal, lo, hi):
-    """Full-rate decode of ~0.6 s around t: first (IN) / last (OUT) frame of a >= HOLD closed, open-eyed, frontal run."""
-    face.reset()
-    fr, ts = frames(p, max(lo, t - 0.3), min(hi, t + 0.3), info, FINE_W)
-    st = [face.state(x) for x in fr]
-    ok = [good_frame(s, cal) for s in st]
-    cand = []
-    for i in range(len(fr)):
-        if side == 'in' and i + HOLD <= len(fr) and all(ok[i:i + HOLD]): cand.append(i)
-        if side == 'out' and i - HOLD + 1 >= 0 and all(ok[i - HOLD + 1:i + 1]): cand.append(i)
-    if not cand: return None
-    i = min(cand, key=lambda k: abs(ts[k] - t))
-    return ts[i], st[i], fr[i]
-
-
-def _runs(ok, side):
-    """Indexes where a >= HOLD run of good frames starts (IN) or ends (OUT)."""
-    c = []
-    for i in range(len(ok)):
-        if side == 'in' and i + HOLD <= len(ok) and all(ok[i:i + HOLD]): c.append(i)
+def _runs(rows, side):
+    ok = [not r['fails'] for r in rows]; c = []
+    for i in range(len(rows)):
+        if side == 'in' and i + HOLD <= len(rows) and all(ok[i:i + HOLD]): c.append(i)
         if side == 'out' and i - HOLD + 1 >= 0 and all(ok[i - HOLD + 1:i + 1]): c.append(i)
     return c
 
 
-def choose(p, info, sb, side):
-    """One keyframe pass over the pause and the 10 s next to it, then a full-rate decode of the pause only."""
-    dur, S, E = info['dur'], sb['start'], sb['end']
-    if side == 'out':
-        target, edge = E + POST, E
-        hard = min(dur - 1.0 / info['fps'], E + POST_RANGE[1])
-        if sb.get('next_sound') is not None: hard = min(hard, max(E + 0.1, sb['next_sound'] - 0.1))
-        kwin = (max(0.0, E - LOOKBACK), min(dur, hard + 1.0))
-        zone = (E + POST_RANGE[0], hard)
-    else:
-        target, edge = S - PRE, S
-        hard = max(0.0, S - PRE_RANGE[1])
-        if sb.get('prev_sound') is not None: hard = max(hard, min(S - 0.1, sb['prev_sound'] + 0.1))
-        kwin = (max(0.0, hard - 1.0), min(dur, S + LOOKBACK))
-        zone = (hard, S - PRE_RANGE[0])
-    kst, kts, kfr = scan(p, info, *kwin)
-    cal = calibrate(kst)
-    # the pause itself, every frame
-    fst, fts, ffr = fine(p, info, zone[0] - 0.4, zone[1] + 0.4)
-    cal = cal or calibrate(fst)
-    if cal is None: return None, None, [f'{side}: no face found - set manually']
-    merged = sorted(zip(kts + fts, kst + fst, list(kfr) + list(ffr)), key=lambda x: x[0])
-    ts = [m[0] for m in merged]; st = [m[1] for m in merged]; fr = [m[2] for m in merged]
-    ok = presenter(st, ts)
-    # movement / turning in the pause (talking gestures inside the words don't count)
-    limit = zone[1] if side == 'out' else zone[0]
-    for b0, b1 in breaks(ok, ts):
-        if side == 'out' and b0 >= E - 0.3: limit = min(limit, b0 - 0.1); break
-    if side == 'in':
-        for b0, b1 in reversed(breaks(ok, ts)):
-            if b1 <= S + 0.3: limit = max(limit, b1 + 0.1); break
+def walk_off(rows, E):
+    """First time after E where the person turns away / moves for >= BREAK_HOLD (stands up, reaches, talks to crew)."""
+    i = 0
+    while i < len(rows):
+        bad = rows[i]['s'] is None or 'looking aside' in rows[i]['fails'] or 'head moving' in rows[i]['fails']
+        if bad and rows[i]['t'] >= E:
+            j = i
+            while j < len(rows) and (rows[j]['s'] is None or 'looking aside' in rows[j]['fails'] or 'head moving' in rows[j]['fails']): j += 1
+            if rows[min(j, len(rows) - 1)]['t'] - rows[i]['t'] >= BREAK_HOLD or j == len(rows): return rows[i]['t']
+            i = j
+        else: i += 1
+    return None
+
+
+def pick(p, info, side, S, E, lo_bound, hi_bound, cal):
+    """Returns (row, flags). lo/hi_bound: the hard limits from dropped speech and the file edges."""
     flags = []
-    # 1) the pause, full rate
-    good = [ok[i] and good_frame(st[i], cal) for i in range(len(st))]
-    fi = [i for i, t in enumerate(ts) if (zone[0] <= t <= limit if side == 'out' else limit <= t <= zone[1])]
-    sub = [good[i] for i in fi]
-    cand = [fi[j] for j in _runs(sub, side)] if fi else []
+    if side == 'in':
+        target = S - PRE_T
+        a, b = max(lo_bound, S - IN_WIN[1]), S - IN_WIN[0]
+        if b <= a:
+            b = max(a, S - 0.04)
+            flags.append(f'in: only {max(0, S - lo_bound):.2f} s between the dropped words / file start and the first word')
+    else:
+        target = E + POST_T
+        a, b = E + OUT_WIN[0], min(hi_bound, E + OUT_WIN[1])
+        if b <= a:
+            a = min(a, max(E + 0.04, hi_bound - 0.04)); b = max(a, hi_bound)
+            flags.append(f'out: only {max(0, hi_bound - E):.2f} s between the last word and the next sound / file end')
+    rows = window(p, info, a, b, cal)
+    if side == 'out' and rows:
+        w = walk_off(rows, E + OUT_WIN[0])
+        if w is not None and w < b:
+            rows = [r for r in rows if r['t'] < w - 0.1] or rows[:1]
+            flags.append(f'out: person moves / looks away {w - E:.1f} s after the last word - OUT kept before it')
+    cand = _runs(rows, side)
+    if not cand:                                  # wider search
+        if side == 'in' and S - EXT < a - 0.05 and max(lo_bound, S - EXT) < a:
+            more = window(p, info, max(lo_bound, S - EXT), a - 1e-3, cal); rows = more + rows
+        if side == 'out' and b < min(hi_bound, E + EXT) - 0.05 and not any('moves / looks away' in x for x in flags):
+            more = window(p, info, b + 1e-3, min(hi_bound, E + EXT), cal)
+            w = walk_off(more, b)
+            if w is not None: more = [r for r in more if r['t'] < w - 0.1]
+            rows = rows + more
+        cand = _runs(rows, side)
     if cand:
-        i = min(cand, key=lambda k: abs(ts[k] - target))
-        if (side == 'out' and limit < zone[1] - 0.05) or (side == 'in' and limit > zone[0] + 0.05):
-            flags.append(f'{side}: person moves or looks away in the pause - {side.upper()} set before it')
-        return (ts[i], st[i], fr[i]), cal, flags
-    # 1b) person steady (toward camera, not moving) but no frame passes the strict mouth / eye test: best frame of the PAUSE, not a jump into the talk
-    pz = [i for i in fi if ok[i] and st[i] is not None and st[i]['ear'] > EAR_MIN * 0.8]
-    if pz:
-        i = min(pz, key=lambda k: st[k]['gap'] / max(cal['closed_thr'], 1e-6) + 0.5 * abs(ts[k] - target))
-        flags.append(f'{side}: no frame in the pause passes mouth-closed / eyes-open; best frame of the pause used, REVIEW')
-        return (ts[i], st[i], fr[i]), cal, flags
-    # 2) look-back: steady, closed-mouth keyframe up to 10 s inside the talk, refined at full rate
-    if side == 'out': pool = [i for i, t in enumerate(ts) if kwin[0] <= t <= min(limit, zone[1]) and good[i]]
-    else: pool = [i for i, t in enumerate(ts) if max(limit, zone[0]) <= t <= kwin[1] and good[i]]
-    if not pool: return None, cal, [f'{side}: no steady, closed-mouth face frame within 10 s - set manually']
-    k = max(pool, key=lambda i: ts[i]) if side == 'out' else min(pool, key=lambda i: ts[i])
-    rst, rts, rfr = fine(p, info, ts[k] - 0.35, ts[k] + 0.35)
-    rok = presenter(rst, rts); rg = [rok[i] and good_frame(rst[i], cal) for i in range(len(rst))]
-    rc = _runs(rg, side)
-    pick = (rts[min(rc, key=lambda j: abs(rts[j] - ts[k]))], rst[min(rc, key=lambda j: abs(rts[j] - ts[k]))], rfr[min(rc, key=lambda j: abs(rts[j] - ts[k]))]) if rc else (ts[k], st[k], fr[k])
-    flags.append(f'{side}: no steady closed-mouth frame in the pause (person moves / looks away / keeps talking) - {side.upper()} set {abs(pick[0] - edge):.1f} s {"before the last" if side == "out" else "after the first"} sound, REVIEW')
-    return pick, cal, flags
+        i = min(cand, key=lambda k: abs(rows[k]['t'] - target))
+        r = rows[i]
+        g = (S - r['t']) if side == 'in' else (r['t'] - E)
+        if g > (IN_WIN[1] if side == 'in' else OUT_WIN[1]) + 0.01:
+            flags.append(f'{side}: clean frame found {g:.1f} s from the {"first" if side == "in" else "last"} word (wider search)')
+        return r, flags
+    if not rows: return None, flags + [f'{side}: no frames in the pause - set manually']
+    # best frame of the pause: fewest failed checks, then nearest the usual gap
+    wt = {'no face': 5, 'looking aside': 3, 'mouth open': 3, 'teeth showing': 2, 'eyes closed': 2, 'hands raised': 2, 'hands moving': 1, 'head moving': 1}
+    i = min(range(len(rows)), key=lambda k: sum(wt.get(x, 1) for x in rows[k]['fails']) + 0.3 * abs(rows[k]['t'] - target))
+    r = rows[i]
+    from collections import Counter
+    why = ', '.join(f'{k} {v * 100 // len(rows)}%' for k, v in Counter(x for q in rows for x in q['fails']).most_common(3))
+    flags.append(f'{side}: no frame in the pause passes every check ({why}); best frame used ({", ".join(r["fails"]) or "single frame"}), REVIEW')
+    return r, flags
 
 
-def run(p, out):
-    os.makedirs(out, exist_ok=True); name = os.path.splitext(os.path.basename(p))[0]
-    import time; T = {}; t_ = time.time()
-    info = probe(p); sb = speech_bounds(p); T['audio'] = round(time.time() - t_, 1)
-    res = dict(clip=name, **info, speech=sb, engine='trim v2.1 (transcript + audio + face, 10 s look-back, best-pause-frame, vertical low-res, 4 threads)')
-    if sb is None: res['flag'] = 'no speech found'; return res
-    # the transcript says which sounds belong to the take (crew talk, count-ins, "was that good?" don't)
+def run(p, out, rot=None):
+    import time
+    os.makedirs(out, exist_ok=True); name = os.path.splitext(os.path.basename(p))[0].replace('_Proxy', '')
+    T = {}; t_ = time.time()
+    info = probe(p)
+    if rot is not None and abs(int(rot)) % 180 == 90 and info['w'] > info['h'] and not info['rot']:
+        # proxy stored unrotated: turn it so the face is upright (rot -90 -> transpose=2)
+        info['tr'] = 'transpose=2' if int(rot) == -90 else 'transpose=1'; info['w'], info['h'] = info['h'], info['w']
+    au = Audio(p); ab = au.bounds(); T['audio'] = round(time.time() - t_, 1)
+    res = dict(clip=name, **info, engine=ENGINE)
+    if ab is None: res['flag'] = 'no speech found'; return res
+    flags = []
     t_ = time.time()
     try:
         import transcript
-        tb = transcript.script_bounds(p, info['dur'])
+        tb = transcript.bounds(p, info['dur'])
     except Exception as e:
         tb = None; res['transcript_error'] = str(e)[:200]
     T['transcript'] = round(time.time() - t_, 1)
+    step = 1 / info['fps']
     if tb:
         res['transcript'] = tb
-        if tb['dropped_head'] and tb['start'] > sb['start'] + 0.1:    # talk before the first line: start later, treat it as a sound to avoid
-            if tb['head_prev'] is not None: sb['prev_sound'] = max(sb.get('prev_sound') or 0, tb['head_prev'])
-            sb['start'] = tb['start']
-        if tb['dropped_tail'] and tb['end'] < sb['end'] - 0.5:        # talk after the last line: end earlier, the chatter becomes the next sound
-            if tb['tail_next'] is not None: sb['next_sound'] = min(sb.get('next_sound') or 1e9, tb['tail_next'])
-            sb['end'] = tb['end']
-        if tb['dropped_head'] or tb['dropped_tail']:
-            res.setdefault('flags', []).append('transcript: ignored ' + ' / '.join(
-                ([f'before: "{" | ".join(tb["dropped_head"])}"'] if tb['dropped_head'] else []) +
-                ([f'after: "{" | ".join(tb["dropped_tail"])}"'] if tb['dropped_tail'] else [])))
+        S = au.onset(tb['start']); E = au.offset(tb['end'])
+        lo = min(au.offset(tb['head_prev'], fwd=0.2) + SAFE, S - 0.1) if tb['head_prev'] is not None else 0.0
+        nxt = max(au.onset(tb['tail_next']), E + 0.1) if tb['tail_next'] is not None else au.next_sound(E + 0.15)
+        if tb['dropped_head']: flags.append(f'transcript: ignored before "{tb["first_words"][:40]}": "{tb["dropped_head"][-90:]}"')
+        if tb['dropped_tail']: flags.append(f'transcript: ignored after "{tb["last_words"][-40:]}": "{tb["dropped_tail"][:90]}"')
+    else:
+        S, E = ab['start'], ab['end']; lo = 0.0; nxt = au.next_sound(E + 0.15)
+        flags.append('no transcript - audio only, REVIEW')
+    if not tb or not tb['dropped_head']:
+        ps = au.prev_sound(S - 0.25)
+        if ps is not None and S - ps < IN_WIN[1]: lo = max(lo, ps + 0.1)
+    hi = min(info['dur'] - step, (nxt - SAFE) if nxt is not None else info['dur'])
+    res['speech'] = dict(start=S, end=E, in_limit=lo, out_limit=hi)
+    t_ = time.time()
+    cal = calibrate(p, info, S + 0.3, min(info['dur'], S + 8.0))
+    if cal is None: cal = calibrate(p, info, max(0, E - 8.0), E - 0.3)
+    T['calibrate'] = round(time.time() - t_, 1)
+    res['calibration'] = cal
+    if cal is None:
+        res['flags'] = flags + ['no face found - set IN/OUT manually']; return res
     for side in ('in', 'out'):
         t_ = time.time()
-        pick, cal, flags = choose(p, info, sb, side)
-        T[side] = round(time.time() - t_, 1)
-        res[side + '_calibration'] = cal
-        if flags: res.setdefault('flags', []).extend(flags)
-        if pick is None: res[side] = None; continue
-        t, st, img = pick
-        res[side] = dict(t=t, frame=int(round(t * info['fpsn'] / info['fpsd'])), **st)
-        import PIL.Image as I; I.fromarray(img).save(os.path.join(out, f'{name}_{side}.jpg'), quality=88)
+        r, fl = pick(p, info, side, S, E, lo, hi, cal)
+        clean = r is not None and not r['fails'] and not any('REVIEW' in x for x in fl)
+        if side == 'out' and not clean and tb and tb['dropped_tail']:
+            # no clean pause before the closing remark: try the pause after it (the person stops talking there)
+            E2 = au.offset(tb['full_end']); n2 = au.next_sound(E2 + 0.15)
+            hi2 = min(info['dur'] - step, (n2 - SAFE) if n2 is not None else info['dur'])
+            r2, fl2 = pick(p, info, side, S, E2, lo, hi2, cal)
+            if r2 is not None and not r2['fails'] and not any('REVIEW' in x for x in fl2):
+                r, fl = r2, fl2 + [f'out: no clean frame before the closing words, so they stay in ("{tb["dropped_tail"][:60]}") - OUT after them, check']
+                res['speech']['end_kept'] = E2
+        T[side] = round(time.time() - t_, 1); flags += fl
+        if r is None: res[side] = None; continue
+        st = r['s'] or {}
+        res[side] = dict(t=r['t'], frame=r['f'], gap_s=round((S - r['t']) if side == 'in' else (r['t'] - res['speech'].get('end_kept', E)), 2), fails=r['fails'],
+                         gap=st.get('gap'), teeth=st.get('teeth'), ear=st.get('ear'), yaw=st.get('yaw'), hands=(r.get('h') or {}).get('hands'))
+        img = one_frame(p, info, r['f'])
+        if img is not None:
+            import PIL.Image as I; I.fromarray(img).save(os.path.join(out, f'{name}_{side}.jpg'), quality=85)
+    res['flags'] = flags
     res['timing'] = T
     json.dump(res, open(os.path.join(out, f'{name}.json'), 'w'), indent=1, default=str)
     return res
 
 
 if __name__ == '__main__':
-    print(json.dumps(run(sys.argv[1], sys.argv[2]), indent=1, default=str))
+    a = sys.argv[1:]; rot = None
+    if '--rot' in a: k = a.index('--rot'); rot = int(a[k + 1]); del a[k:k + 2]
+    print(json.dumps(run(a[0], a[1], rot), indent=1, default=str))

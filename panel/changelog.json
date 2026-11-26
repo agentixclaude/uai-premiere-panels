@@ -2,6 +2,17 @@
  "panel": "UAI Smart Export",
  "entries": [
   {
+   "version": "1.8.3",
+   "date": "2026-11-26T13:00",
+   "changes": [
+    {
+     "what": "Export range",
+     "before": "In/Out set on the enabled clip's exact edges in seconds; rounding could pull in the neighbouring disabled (black) frame",
+     "now": "In = clip start + 2 frames, Out = clip end - 2 frames (aimed at mid-frame), matching the Luma Cut IN/OUT markers; clips of 10 frames or less unchanged"
+    }
+   ]
+  },
+  {
    "version": "1.8.2",
    "date": "2026-11-25T18:40",
    "changes": [

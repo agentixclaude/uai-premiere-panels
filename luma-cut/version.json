@@ -1,1 +1,1 @@
-{"version": "1.9.1", "notes": "Stills, grade references and light check always come from the original media; About \u203a Proxies & output"}
+{"version": "1.10.0", "notes": "Trim v3: real speech start (count-ins and instructions dropped), mouth / teeth / eyes / hands / still checks, 2-frame clean edge (no black frame)"}

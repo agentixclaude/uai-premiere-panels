@@ -74,6 +74,8 @@ function fileXml(c, first) {
     '<channelcount>2</channelcount></audio></media></file>';
 }
 
+var EDGE = 2;   // frames of clean edge around IN/OUT (user rule 26 Nov: no black frame at export start/end)
+
 function Seq(sid, name, w, h, rate) {
   this.sid = sid; this.name = name; this.w = w; this.h = h; this.rate = rate;
   this.v = []; this.a = []; this.markers = []; this.t = 0; this.n = 0;
@@ -140,11 +142,16 @@ function build(plan, opts) {
     var g = groups[key], cs = g.clips.slice().sort(function (a, b) { return a.file < b.file ? -1 : a.file > b.file ? 1 : 0; });
     var s = new Seq('seq-' + key, client + '_' + key, cs[0].w, cs[0].h, cs[0].rate);
     cs.forEach(function (c) {
-      var fi = c.inF, fo = c.outF + 1;           // out is exclusive inside the XML
+      // clean edge: the enabled body is cut EDGE frames wider than IN/OUT on each side, the markers sit on the IN/OUT
+      // frames themselves (EDGE frames inside the enabled body) and Smart Export exports marker to marker, so no
+      // disabled (black) frame can reach the start or end of an export
+      var e0 = Math.min(EDGE, c.inF), e1 = Math.min(EDGE, c.frames - 1 - c.outF);
+      var fi = c.inF - e0, fo = c.outF + 1 + e1;   // out is exclusive inside the XML
       s.addPiece(c, 0, fi, false, '', seen);
       var b0 = s.addPiece(c, fi, fo, true, lumetriFilter(opts.template, c.grade, opts.lutPath), seen);
-      s.marker(b0, 'IN ' + c.file, 'IN: mouth closed + eyes open');
-      s.marker(b0 + (fo - fi) - 1, 'OUT ' + c.file, c.flag ? 'OUT REVIEW: ' + c.flag : 'OUT: mouth closed + eyes open', c.flag ? 'Red' : 'Green');
+      var rv = /REVIEW|check/i.test(c.flag);
+      s.marker(b0 + e0, 'IN ' + c.file, rv ? 'REVIEW: ' + c.flag : 'IN: mouth closed, no teeth, eyes open, hands at rest, still', rv ? 'Red' : 'Green');
+      s.marker(b0 + (fo - fi) - 1 - e1, 'OUT ' + c.file, rv ? 'REVIEW: ' + c.flag : 'OUT: mouth closed, no teeth, eyes open, hands at rest, still', rv ? 'Red' : 'Green');
       s.addPiece(c, fo, c.frames, false, '', seen);
     });
     seqs.push(s);

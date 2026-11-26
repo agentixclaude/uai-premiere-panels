@@ -263,7 +263,7 @@ function lcReview() {
 function lcGoto(ticks) {
     try { app.project.activeSequence.setPlayerPosition(String(ticks)); return 'OK'; } catch (e) { return 'ERR:' + e.toString(); }
 }
-// After rolling an edit point by hand: put each IN/OUT marker back on its clip's real first / last frame.
+// After rolling an edit point by hand: put each IN/OUT marker back 2 frames inside its clip's first / last frame.
 // Comments (and REVIEW notes) are kept; markers of clips that moved are rebuilt.
 function lcSyncMarkers() {
     try {
@@ -281,7 +281,9 @@ function lcSyncMarkers() {
             var c = t.clips[i];
             if (c.disabled || seen[c.name]) { continue; }
             seen[c.name] = true;
-            var pairs = [['IN ' + c.name, Number(c.start.ticks), 'IN: mouth closed + eyes open'], ['OUT ' + c.name, Number(c.end.ticks) - frame, 'OUT: mouth closed + eyes open']];
+            // clean edge: markers sit 2 frames inside the enabled clip (Smart Export exports marker to marker: no black frame)
+            var edge = (Number(c.end.ticks) - Number(c.start.ticks)) > 10 * frame ? 2 * frame : 0;
+            var pairs = [['IN ' + c.name, Number(c.start.ticks) + edge, 'IN: mouth closed, no teeth, eyes open, hands at rest, still'], ['OUT ' + c.name, Number(c.end.ticks) - frame - edge, 'OUT: mouth closed, no teeth, eyes open, hands at rest, still']];
             for (var k = 0; k < 2; k++) {
                 var old = keep[pairs[k][0]], mk = ms.createMarker(pairs[k][1] / 254016000000);
                 mk.name = pairs[k][0];

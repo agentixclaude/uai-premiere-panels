@@ -2,6 +2,37 @@
  "panel": "UAI Luma Cut",
  "entries": [
   {
+   "version": "1.10.0",
+   "date": "2026-11-26T13:00",
+   "changes": [
+    {
+     "what": "IN point",
+     "before": "could start on a count-in or crew instruction (\"3, 2, 1\", \"again a little slower... action\") or 0.4-2.3 s into the speech",
+     "now": "starts on the first real line (Hi / Hey / Hello / My name / I'm / I), count-ins, take instructions and apologies dropped; never inside the speech; searched 0.25-3 s before the first word (up to 5 s)"
+    },
+    {
+     "what": "IN / OUT frame check",
+     "before": "mouth closed + eyes open",
+     "now": "face to camera, head still, mouth closed, no teeth showing, eyes open, hands at rest and still - all held 3 frames; anything that fails is flagged REVIEW with the failed checks named"
+    },
+    {
+     "what": "OUT point",
+     "before": "forced 0.5 s earlier (learned rule)",
+     "now": "used as found; closing remarks (\"I'm done\", \"close my mouth\", \"sign off\", count-outs, \"Perfect\") dropped when a clean pause exists before them, else kept and flagged CHECK"
+    },
+    {
+     "what": "Clean edge (black frame)",
+     "before": "IN/OUT markers and the export started exactly on the cut next to the disabled head/tail, so seconds rounding could export one black frame",
+     "now": "enabled body cut 2 frames wider each side; IN/OUT markers sit on the chosen frames, 2 frames inside the enabled clip (Build and Re-sync markers)"
+    },
+    {
+     "what": "Standalone face trim",
+     "before": "analysed the 8K original",
+     "now": "analyses the 1080p proxy when it exists (frame-exact, faster), vertical proxies turned upright"
+    }
+   ]
+  },
+  {
    "version": "1.9.1",
    "date": "2026-11-25T18:40",
    "changes": [

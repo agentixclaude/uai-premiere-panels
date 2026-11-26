@@ -327,15 +327,15 @@
     return new Promise(function (resolve) {
       var work = path.join(HOME_DIR, 'standalone_work');
       try { fs.mkdirSync(work, { recursive: true }); } catch (e) {}
-      cp.execFile(PY, [path.join(ENGINE_DIR, 'trim.py'), c.path, work], { env: engineEnv(), timeout: 900000, maxBuffer: 64 * 1024 * 1024 }, function (err, stdout) {
+      // proxies are frame-exact copies: analyse the 1080p proxy when it exists (fast), else the original
+      var src = c.path, px = state.client ? PROXY.proxyPath(c.path, state.client.dir) : null;
+      if (px && PROXY.hasFile(px)) src = px;
+      cp.execFile(PY, [path.join(ENGINE_DIR, 'trim.py'), src, work, '--rot', String(c.rot || 0)], { env: engineEnv(), timeout: 900000, maxBuffer: 64 * 1024 * 1024 }, function (err, stdout) {
         if (err) { log('face trim failed ' + c.file + ': ' + String(err.message || err).slice(0, 160)); return resolve(null); }
         var res; try { res = JSON.parse(stdout.slice(stdout.indexOf('{'))); } catch (e) { return resolve(null); }
         if (!res || res.flag === 'no speech found' || !res.in || !res.out) return resolve(null);
-        var fps = c.fps || 29.97, inF = Math.max(0, Math.min(c.frames - 1, res.in.frame)), outF = Math.max(0, Math.min(c.frames - 1, res.out.frame));
-        if (res.speech) {    // approved learned rule: OUT 0.5 s earlier, never closer than 0.15 s after the last word
-          var floorF = Math.round((res.speech.end + 0.15) * fps);
-          if (outF > floorF) outF = Math.max(floorF, outF - Math.round(0.5 * fps));
-        }
+        var inF = Math.max(0, Math.min(c.frames - 1, res.in.frame)), outF = Math.max(0, Math.min(c.frames - 1, res.out.frame));
+        // engine v3: the OUT frame is used as found (the old "OUT 0.5 s earlier" rule is withdrawn - AC#13 OUTs were moved later)
         if (outF <= inF) return resolve(null);
         resolve({ inF: inF, outF: outF, flag: (res.flags || []).join('; ') });
       });
