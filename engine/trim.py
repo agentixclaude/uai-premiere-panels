@@ -17,7 +17,7 @@ import sys, os, json, subprocess, platform, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import face
 
-ENGINE = 'trim v3 (transcript openers + count-in/closing-remark drop; face + mouth + teeth + eyes + hands + still, all held 3 frames; no IN into the speech)'
+ENGINE = 'trim v3.1 (OUT anchored on the speaker end audio, +-4 s pause search; transcript openers + count-in/closing-remark drop; face + mouth + teeth + eyes + hands + still, all held 3 frames; no IN into the speech)'
 PRE_T, POST_T = 0.80, 0.60          # usual gap before the first / after the last word (40 finished outputs)
 IN_WIN, OUT_WIN = (0.25, 3.0), (0.15, 3.0)
 EXT = 5.0                            # wider search when nothing passes in the normal window
@@ -77,11 +77,12 @@ class Audio:
         while i < hi and self.sp[i]: i += 1
         return self.t(i)
 
-    def next_sound(self, t):
+    def next_sound(self, t, need=3):
+        """Start of the next sound lasting >= need x 20 ms (need=10: speech, not a breath, click or rustle)."""
         run = 0
         for x in range(self.i(t), len(self.sp)):
             run = run + 1 if self.sp[x] else 0
-            if run >= 3: return self.t(x - 2)
+            if run >= need: return self.t(x - need + 1)
         return None
 
     def prev_sound(self, t):
@@ -247,6 +248,27 @@ def pick(p, info, side, S, E, lo_bound, hi_bound, cal):
     return r, flags
 
 
+def _clean(r, fl):
+    return r is not None and not r['fails'] and not any('REVIEW' in x for x in fl)
+
+
+def lookback_pause(p, info, au, E, cal, back=4.0):
+    """Pauses of >= 0.3 s silence in [E - back, E]; the latest clean, held frame inside one of them."""
+    i0, i1 = au.i(E - back), au.i(E)
+    pauses, k = [], i0
+    while k < i1:
+        if not au.sp[k]:
+            j = k
+            while j < i1 and not au.sp[j]: j += 1
+            if (j - k) * 0.02 >= 0.3: pauses.append((au.t(k) + 0.05, au.t(j) - 0.05))
+            k = j
+        else: k += 1
+    for a, b in reversed(pauses):
+        rows = window(p, info, a, b, cal); c = _runs(rows, 'out')
+        if c: return rows[c[-1]]
+    return None
+
+
 def run(p, out, rot=None):
     import time
     os.makedirs(out, exist_ok=True); name = os.path.splitext(os.path.basename(p))[0].replace('_Proxy', '')
@@ -291,20 +313,37 @@ def run(p, out, rot=None):
         res['flags'] = flags + ['no face found - set IN/OUT manually']; return res
     for side in ('in', 'out'):
         t_ = time.time()
-        r, fl = pick(p, info, side, S, E, lo, hi, cal)
-        clean = r is not None and not r['fails'] and not any('REVIEW' in x for x in fl)
-        if side == 'out' and not clean and tb and tb['dropped_tail']:
-            # no clean pause before the closing remark: try the pause after it (the person stops talking there)
-            E2 = au.offset(tb['full_end']); n2 = au.next_sound(E2 + 0.15)
-            hi2 = min(info['dur'] - step, (n2 - SAFE) if n2 is not None else info['dur'])
-            r2, fl2 = pick(p, info, side, S, E2, lo, hi2, cal)
-            if r2 is not None and not r2['fails'] and not any('REVIEW' in x for x in fl2):
-                r, fl = r2, fl2 + [f'out: no clean frame before the closing words, so they stay in ("{tb["dropped_tail"][:60]}") - OUT after them, check']
-                res['speech']['end_kept'] = E2
+        if side == 'in':
+            r, fl = pick(p, info, side, S, E, lo, hi, cal)
+            if not _clean(r, fl) and tb and tb.get('soft_start') is not None:
+                # "Okay, my name is ..." said in one breath: no clean frame between, so start before the filler (user, AC#12 C0031)
+                S2 = au.onset(tb['soft_start']); lo2 = au.offset(tb['soft_prev'], fwd=0.2) + SAFE if tb.get('soft_prev') else 0.0
+                r2, fl2 = pick(p, info, side, S2, E, min(lo2, S2 - 0.1), hi, cal)
+                if _clean(r2, fl2): r, fl = r2, fl2 + [f'in: no clean frame between the filler and the first line, so IN is before the filler, check']
+        else:
+            # OUT anchors on where the speaker's audio really ends (his closing words stay in; only short crew words after
+            # them, like "Perfect.", are left out). User rule 26 Nov: match the end audio, then find the pause and a closed
+            # mouth around +-3-4 s.
+            Ea = au.offset(tb['speaker_end']) if tb else E
+            n1 = (au.onset(tb['speaker_next']) if tb and tb.get('speaker_next') is not None else au.next_sound(Ea + 0.15, 10))
+            hi1 = min(info['dur'] - step, (n1 - SAFE) if n1 is not None else info['dur'])
+            res['speech']['end'] = Ea
+            r, fl = pick(p, info, side, S, Ea, lo, hi1, cal)
+            if not _clean(r, fl) and n1 is not None and hi1 < Ea + OUT_WIN[1]:
+                # the next sound is the crew: try the pause after everything
+                Ez = au.offset(tb['full_end']) if tb else Ea; nz = au.next_sound(Ez + 0.15, 10)
+                hz = min(info['dur'] - step, (nz - SAFE) if nz is not None else info['dur'])
+                r2, fl2 = pick(p, info, side, S, Ez, lo, hz, cal)
+                if _clean(r2, fl2): r, fl = r2, fl2 + ['out: crew words right after the last line, OUT after them, check']
+            if not _clean(r, fl):
+                # go back: the last pause (>= 0.3 s of silence) inside the final 4 s of speech with a clean frame
+                r3 = lookback_pause(p, info, au, Ea, cal)
+                if r3 is not None: r, fl = r3, ['out: no clean frame after the last word; OUT in the last pause %.1f s before it, REVIEW' % (Ea - r3['t'])]
+        clean = _clean(r, fl)
         T[side] = round(time.time() - t_, 1); flags += fl
         if r is None: res[side] = None; continue
         st = r['s'] or {}
-        res[side] = dict(t=r['t'], frame=r['f'], gap_s=round((S - r['t']) if side == 'in' else (r['t'] - res['speech'].get('end_kept', E)), 2), fails=r['fails'],
+        res[side] = dict(t=r['t'], frame=r['f'], gap_s=round((S - r['t']) if side == 'in' else (r['t'] - res['speech']['end']), 2), fails=r['fails'],
                          gap=st.get('gap'), teeth=st.get('teeth'), ear=st.get('ear'), yaw=st.get('yaw'), hands=(r.get('h') or {}).get('hands'))
         img = one_frame(p, info, r['f'])
         if img is not None:

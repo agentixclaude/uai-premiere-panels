@@ -161,6 +161,21 @@ def tail_end(words):
     return n
 
 
+def speaker_end(words):
+    """Index (exclusive) after the speaker's real last word: only short crew words at the very end go ("Perfect.", "Okay.")."""
+    cl = clauses(words); n = len(words)
+    while cl and len(cl) > 1 and len(cl[-1]) <= 3 and (CREW.search(text(cl[-1])) or numbers_only(cl[-1])):
+        n -= len(cl[-1]); cl.pop()
+    return n
+
+
+def soft_head(words, i):
+    """A short filler said in one breath with the first line ("Okay, my name is ..."): index where it starts, else None."""
+    k = i
+    while k > 0 and i - k < 2 and norm(words[k - 1]) in FILLER and words[k]['s'] - words[k - 1]['e'] < 0.6: k -= 1
+    return k if k < i else None
+
+
 def bounds(p, dur):
     if not available(): return None
     head = _words(p, 0, min(dur, EDGE))
@@ -169,7 +184,9 @@ def bounds(p, dur):
     i = head_start(head); j = tail_end(tail)
     if i is None or j is None or i >= len(head) or j <= 0: return None
     first, last = head[i], tail[j - 1]
-    return dict(start=first['s'], end=last['e'],
+    se = speaker_end(tail); sh = soft_head(head, i)
+    return dict(speaker_end=tail[se - 1]['e'] if se > 0 else last['e'], speaker_next=tail[se]['s'] if se < len(tail) else None,
+                soft_start=head[sh]['s'] if sh is not None else None, soft_prev=head[sh - 1]['e'] if sh else None,start=first['s'], end=last['e'],
                 first_words=raw(head[i:i + 8]), last_words=raw(tail[max(0, j - 8):j]),
                 dropped_head=raw(head[:i]), dropped_tail=raw(tail[j:]),
                 head_prev=head[i - 1]['e'] if i > 0 else None, tail_next=tail[j]['s'] if j < len(tail) else None,

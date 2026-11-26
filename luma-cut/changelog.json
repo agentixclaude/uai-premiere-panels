@@ -8,7 +8,7 @@
     {
      "what": "IN point",
      "before": "could start on a count-in or crew instruction (\"3, 2, 1\", \"again a little slower... action\") or 0.4-2.3 s into the speech",
-     "now": "starts on the first real line (Hi / Hey / Hello / My name / I'm / I), count-ins, take instructions and apologies dropped; never inside the speech; searched 0.25-3 s before the first word (up to 5 s)"
+     "now": "starts on the first real line (Hi / Hey / Hello / My name / I'm / I), count-ins, take instructions and apologies dropped; never inside the speech; searched 0.25-3 s before the first word (up to 5 s); a filler said in one breath with the first line (\"Okay, my name is…\") stays in when there is no clean frame between them (flag CHECK)"
     },
     {
      "what": "IN / OUT frame check",
@@ -18,7 +18,7 @@
     {
      "what": "OUT point",
      "before": "forced 0.5 s earlier (learned rule)",
-     "now": "used as found; closing remarks (\"I'm done\", \"close my mouth\", \"sign off\", count-outs, \"Perfect\") dropped when a clean pause exists before them, else kept and flagged CHECK"
+     "now": "anchored on where the speaker's audio really ends (his closing words like \"I'm done\" stay in, only short crew words after them like \"Perfect.\" are left out); the clean pause is searched up to 4 s after it, and if none, the last pause up to 4 s before it (REVIEW). A breath or click no longer ends the search, only real speech"
     },
     {
      "what": "Clean edge (black frame)",
