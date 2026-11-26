@@ -8,7 +8,7 @@
     {
      "what": "Export range",
      "before": "In/Out set on the enabled clip's exact edges in seconds; rounding could pull in the neighbouring disabled (black) frame",
-     "now": "In = clip start + 2 frames, Out = clip end - 2 frames (aimed at mid-frame), matching the Luma Cut IN/OUT markers; clips of 10 frames or less unchanged"
+     "now": "In = clip start + 1 frame, Out = clip end - 1 frame, both aimed a quarter frame into the frame (measured: Premiere keeps the frame the In falls in and stops before the frame the Out falls in), matching the Luma Cut IN/OUT markers; clips of 10 frames or less unchanged. Tested on AC#13 26 Nov"
     }
    ]
   },

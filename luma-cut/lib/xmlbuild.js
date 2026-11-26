@@ -74,7 +74,7 @@ function fileXml(c, first) {
     '<channelcount>2</channelcount></audio></media></file>';
 }
 
-var EDGE = 2;   // frames of clean edge around IN/OUT (user rule 26 Nov: no black frame at export start/end)
+var EDGE = 1;   // frames of clean edge around IN/OUT (user rule 26 Nov: no black frame at export start/end)
 
 function Seq(sid, name, w, h, rate) {
   this.sid = sid; this.name = name; this.w = w; this.h = h; this.rate = rate;

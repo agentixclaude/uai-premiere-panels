@@ -58,10 +58,11 @@ function ugQueue(seqId, inSec, outSec, outPath, presetPath) {
     try {
         var s = ugFindSeq(seqId);
         if (!s) { return 'ERR:sequence not found'; }
-        // clean edge (26 Nov): export 2 frames inside the enabled clip on both sides, aimed at the middle of the frame,
-        // so seconds rounding can never pull in the neighbouring disabled (black) frame. Matches the Luma Cut IN/OUT markers.
-        var f = Number(s.timebase) / 254016000000;
-        if (f > 0 && outSec - inSec > 10 * f) { inSec = inSec + 2 * f + 0.25 * f; outSec = outSec - 3 * f + 0.25 * f; }
+        // clean edge (26 Nov): export EDGE frame(s) inside the enabled clip on both sides, so the neighbouring disabled
+        // (black) frame can never be included. Matches the Luma Cut IN/OUT markers. Measured on AC#13 VG4083: Premiere
+        // keeps the frame the In falls in and stops BEFORE the frame the Out falls in, so both are aimed a quarter frame in.
+        var EDGE = 1, f = Number(s.timebase) / 254016000000;
+        if (f > 0 && outSec - inSec > 10 * f) { inSec = inSec + EDGE * f + 0.25 * f; outSec = outSec - EDGE * f + 0.25 * f; }
         s.setInPoint(inSec);
         s.setOutPoint(outSec);
         app.encoder.launchEncoder();

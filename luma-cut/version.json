@@ -1,1 +1,1 @@
-{"version": "1.10.0", "notes": "Trim v3: real speech start (count-ins and instructions dropped), mouth / teeth / eyes / hands / still checks, 2-frame clean edge (no black frame)"}
+{"version": "1.10.0", "notes": "Trim v3: real speech start (count-ins and instructions dropped), mouth / teeth / eyes / hands / still checks, 1-frame clean edge (no black frame)"}

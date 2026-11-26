@@ -23,7 +23,7 @@
     {
      "what": "Clean edge (black frame)",
      "before": "IN/OUT markers and the export started exactly on the cut next to the disabled head/tail, so seconds rounding could export one black frame",
-     "now": "enabled body cut 2 frames wider each side; IN/OUT markers sit on the chosen frames, 2 frames inside the enabled clip (Build and Re-sync markers)"
+     "now": "enabled body cut 1 frame wider each side; IN/OUT markers sit on the chosen frames, 1 frame inside the enabled clip (Build and Re-sync markers). Tested on AC#13 26 Nov"
     },
     {
      "what": "Standalone face trim",
