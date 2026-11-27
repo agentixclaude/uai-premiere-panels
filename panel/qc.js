@@ -183,6 +183,7 @@
   }
 
   var api = { FFPROBE: FFPROBE, FFMPEG: FFMPEG, probe: probe, check: check, edges: edges, loudness: loudness, reviewPack: reviewPack, social: social, frameAt: frameAt, notify: notify };
+  // CEP mixed context also defines `module`: always publish on the window too
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.UAIQC = api;
+  if (typeof window !== 'undefined') window.UAIQC = api; else if (root) root.UAIQC = api;
 })(this);

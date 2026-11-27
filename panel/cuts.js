@@ -74,6 +74,7 @@
   }
 
   var api = { detect: detect, detectMarkers: detectMarkers, TICKS: TICKS };
+  // CEP mixed context also defines `module`: always publish on the window too
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.UAICuts = api;
+  if (typeof window !== 'undefined') window.UAICuts = api; else if (root) root.UAICuts = api;
 })(this);

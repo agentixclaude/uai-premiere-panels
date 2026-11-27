@@ -20,6 +20,9 @@
   var https = nodeReq('https');
   var AUDIO_MBPS = 0.32, SAFETY = 0.95, BPP = 0.16;
   var N = window.UAINaming, Q = window.UAIQC, C = window.UAICuts;
+  window.addEventListener('error', function (e) {     // show script errors in the panel instead of failing silently
+    var el = document.getElementById('status'); if (el) { el.textContent = 'Panel error: ' + e.message + ' (' + String(e.filename || '').split('/').pop() + ':' + e.lineno + ')'; el.className = 'status tone-bad'; }
+  });
 
   var $ = function (id) { return document.getElementById(id); };
   var each = function (list, fn) { Array.prototype.forEach.call(list, fn); };

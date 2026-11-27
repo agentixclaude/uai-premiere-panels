@@ -60,6 +60,7 @@
   }
 
   var api = { ratio: ratio, camel: camel, parts: parts, pick: pick, date: date };
+  // CEP mixed context also defines `module`: always publish on the window too
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.UAINaming = api;
+  if (typeof window !== 'undefined') window.UAINaming = api; else if (root) root.UAINaming = api;
 })(this);
