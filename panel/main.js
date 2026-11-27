@@ -571,7 +571,7 @@
     lines.push('', o.passed.length + ' passed · ' + o.held.length + ' held');
     return lines.join('\n');
   }
-  function pbcopy(text) { return new Promise(function (res) { try { var p = cp.spawn('/usr/bin/pbcopy'); p.on('error', function () { res(); }); p.on('close', function () { res(); }); p.stdin.on('error', function () {}); p.stdin.end(text); } catch (e) { res(); } }); }
+  function pbcopy(text) { return new Promise(function (res) { try { var p = cp.spawn('/usr/bin/pbcopy', [], { env: Object.assign({}, process.env, { LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' }) }); p.on('error', function () { res(); }); p.on('close', function () { res(); }); p.stdin.on('error', function () {}); p.stdin.end(text); } catch (e) { res(); } }); }
   function copyFile(a, b) { return new Promise(function (res, rej) { fs.copyFile(a, b, function (e) { if (e) rej(e); else res(); }); }); }
   async function handoff() {
     if (state.handing) return;
@@ -606,7 +606,7 @@
         var rel = state.driveDir && drive && state.driveDir.indexOf(drive.root) === 0 ? 'My Drive' + state.driveDir.slice(drive.root.length) : state.driveDir;
         var prompt = ['UAI Smart Export hand-off — ' + projName(), '',
           'QC passed: ' + o.passed.length + ' video(s). Held for fixes: ' + (o.held.map(function (x) { return x.stem; }).join(', ') || 'none') + '.',
-          'Files are in Google Drive' + (drive ? ' (' + drive.account + ')' : '') + ': ' + rel, ''].concat(
+          (state.driveDir && drive && state.driveDir.indexOf(drive.root) === 0 ? 'Files are in Google Drive (' + drive.account + '): ' + rel : 'Files were copied to this folder (not a Google Drive folder): ' + rel), ''].concat(
           cfg.asanaOn ? ['1. Asana, project "' + (cfg.asanaProj || 'Creative Requests') + '": find (or create) the task "' + task + '", move it to QC 1 (QC chain Hitesh → Khusi → Johnson → ANIK) and add a comment with the Drive folder link and the QC report below.'] : []).concat(
           cfg.slackOn ? [(cfg.asanaOn ? '2' : '1') + '. Draft a short Slack note for ' + (cfg.slackCh || '[channel not chosen — ask me]') + ' with the Drive link and the QC result. Show me the text and wait for my OK before posting.'] : []).concat(
           ['', 'Show me what you will change and wait for my confirmation before you change anything in Asana or Slack.', '', report]).join('\n');
@@ -775,7 +775,7 @@
   // ---------- wiring ----------
   $('mode').addEventListener('change', function () {
     if (state.busy) { $('mode').value = state.mode; return; }
-    state.mode = $('mode').value; store('opt:mode', state.mode);
+    state.mode = $('mode').value; store('opt:mode', state.mode); status('status', '');
     if (state.info) { loadOutDir(); showOutDir(); }
     refresh();
   });
@@ -805,7 +805,7 @@
   $('drivebrowse').addEventListener('click', async function () {
     if (!state.info) return;
     var start = state.driveDir && fs.existsSync(state.driveDir) ? state.driveDir : drive ? drive.root : os.homedir();
-    var picked = await evalJsx('ugPickFolder(' + q(start) + ')');
+    var picked = await evalJsx('ugPickFolder(' + q(start) + ',' + q('Choose the delivery folder (inside Google Drive)') + ')');
     if (picked && picked !== 'EvalScript error.') { state.driveDir = picked; store('drive:' + state.info.projectPath, picked); renderDeliver(); }
   });
   $('asana-task').addEventListener('input', function () { if (state.info) store('task:' + state.info.projectPath, $('asana-task').value); });

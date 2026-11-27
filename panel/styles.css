@@ -150,3 +150,6 @@ details.fold { border: 1px solid var(--line-soft); border-radius: var(--r); padd
 details.fold[open] { padding-bottom: 10px; }
 details.fold[open] > *:not(summary) + *:not(summary) { margin-top: 8px; }
 details.fold .updates .upd:not(.latest) { opacity: .85; }
+
+.tg label { display: inline-flex; align-items: center; gap: 6px; }
+.row.tg { gap: 8px; }

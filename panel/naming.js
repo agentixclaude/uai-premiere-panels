@@ -16,7 +16,8 @@
     return best && err < 0.025 ? best[0] + 'x' + best[1] : w + 'x' + h;
   }
   function camel(s) {
-    return String(s || '').replace(/\.[A-Za-z0-9]{2,5}$/, '').split(/[^A-Za-z0-9#]+/).filter(Boolean)
+    // words split by spaces/punctuation are joined CamelCase; "_" and "-" inside a name stay ("T300_4K_HZ")
+    return String(s || '').replace(/\.[A-Za-z0-9]{2,5}$/, '').split(/[^A-Za-z0-9#_\-]+/).filter(Boolean)
       .map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join('');
   }
   function clean(s) { return String(s).replace(/[\/:*?"<>|\\]/g, '_').trim(); }

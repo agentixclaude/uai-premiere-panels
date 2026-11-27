@@ -145,10 +145,10 @@ function ugQueueFrames(seqId, inF, outF, outPath, presetPath) {
 function ugStartQueue() {
     try { app.encoder.startBatch(); return 'OK'; } catch (e) { return 'ERR:' + e.toString(); }
 }
-function ugPickFolder(startPath) {
+function ugPickFolder(startPath, title) {
     try {
-        var start = startPath ? new Folder(startPath) : null;
-        var f = start && start.exists ? start.selectDlg('Choose the export folder') : Folder.selectDialog('Choose the export folder');
+        var start = startPath ? new Folder(startPath) : null, t = title || 'Choose the export folder';
+        var f = start && start.exists ? start.selectDlg(t) : Folder.selectDialog(t);
         return f ? f.fsName : '';
     } catch (e) { return ''; }
 }

@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Luma%20Cut-1.9.1-fa914f?style=flat-square" alt="Luma Cut 1.9.1">
-  <img src="https://img.shields.io/badge/Smart%20Export-1.8.2-fa914f?style=flat-square" alt="Smart Export 1.8.2">
+  <img src="https://img.shields.io/badge/Smart%20Export-1.10.0-fa914f?style=flat-square" alt="Smart Export 1.10.0">
   <img src="https://img.shields.io/badge/Arena%20Hub-0.6.1-4f8cff?style=flat-square" alt="Arena Hub 0.6.1">
   <img src="https://img.shields.io/badge/Premiere%20MCP-1.31.0-3a3a3f?style=flat-square" alt="Premiere MCP 1.31.0">
   <img src="https://img.shields.io/badge/Premiere%20Pro-2020%2B-1c1c1e?style=flat-square" alt="Premiere Pro 2020+">
@@ -30,11 +30,19 @@
 | Tool | What it does | Where |
 |---|---|---|
 | **UAI Luma Cut** | Sets up an S-Log client: trims each clip's pauses, applies the house grade, builds the 8K / 4K, horizontal / vertical timelines, live grading and review. | this repo |
-| **UAI Smart Export** | Exports every clip as its own 4K H.264 file under 2 GB, named after the clip, straight into Final Output, then verifies each file. | this repo |
+| **UAI Smart Export** | Exports every clip (colour grading) or every sequence / cut / marker range (normal edits) as its own H.264 file, checks each file automatically when Media Encoder finishes, and hands passed files off to Drive. | this repo |
 | **Agentix Arena Hub** | Drop any file or link, offline auto captions you can edit, CapCut-style effects, smart adjustment layers and mattes. | [agentix-arena-hub](https://github.com/agentixclaude/agentix-arena-hub) |
 | **Premiere MCP** | Lets Claude read and drive Premiere (timelines, clips, effects, exports). Team-tested version, one installer. | [`mcp/`](mcp/) |
 
 ## What's new
+**Smart Export 1.10.0** · 2026-11-27 15:00
+- **Compact layout** — tabs Export · QC · Deliver · About; Project type and What to export are two dropdowns in one row; size, naming, QC and review settings sit behind one Output line + the settings button
+- **Client rule** — colour-grading folders without “AC”: 8K → 4K at 4.5–4.8 GB (≤ 200 Mbps), 4K stays 4K (≤ 90 Mbps, under 2 GB). AC folders keep every file under 2 GB
+- **Auto QC** — each file is checked when Media Encoder finishes it: black/still frames at start and end, loudness (−14 ±1 LUFS on Normal export), duration = timeline, codec/frame/fps/size band; Go to problem; Mac notification
+- **Naming + versions** — `{Project}_{Sequence}_{Clip}_{Ratio}_v{NN}`, next free version, never overwrites (colour grading keeps the clip name)
+- **Outputs** — Master + Social (1080 wide, 8 Mbps, −14 LUFS) + Review pack (720p under 16 MB, contact sheet, cover PNG)
+- **Export by markers** · **Preview gamma guard** (Viewer Gamma 1.96) · **Deliver** (passed files to Drive, QC report, Asana/Slack prompt for Claude)
+
 **Luma Cut 1.9.1 · Smart Export 1.8.2** · 2026-11-25 18:40
 - **Originals in every output** — stills, grade references and Check light & colour switch proxies off for the capture; Smart Export renders the original files (tested with a marked proxy). About › Proxies & output lists what uses which
 
@@ -107,12 +115,12 @@ Needs a Mac, Premiere Pro 2020 or newer, Adobe Media Encoder (for Smart Export).
 <td width="34%" valign="top"><img src=".github/assets/smart-export.jpg" alt="UAI Smart Export" width="100%"></td>
 <td valign="top">
 
-**Every clip out as its own file.** File name = clip name, folder = the client's **Final Output**.
+**Every clip out as its own file, checked before it leaves.**
 
-- 4K in the sequence's orientation (3840×2160 or 2160×3840), H.264, Rec.709, AAC 320 kbps.
-- Always under the size cap (2 GB by default); bitrate worked out per clip.
-- Export all / active sequence / selected clips; existing files skipped unless *Replace existing*.
-- **Verify files** checks codec, frame size and size of every output.
+- **Colour grading export:** one 4K H.264 file per enabled V1 clip, named after the clip, into the client's **Final Output**. AC folders: every file under 2 GB. Client folders: 8K → 4K at 4.5–4.8 GB, 4K under 2 GB.
+- **Normal export:** whole sequence, clips by cuts or markers named “Clip …”; match source, medium bitrate, versioned names.
+- **QC** checks every file as soon as Media Encoder finishes; **Social** and **Review pack** copies are made from the passed master.
+- **Deliver** copies only passed files to Google Drive and prepares the Asana QC 1 / Slack hand-off for Claude.
 
 [Full Smart Export guide →](docs/smart-export.md)
 
