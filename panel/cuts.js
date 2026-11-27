@@ -53,7 +53,27 @@
     });
   }
 
-  var api = { detect: detect, TICKS: TICKS };
+  // Export by markers (1.10.0): sequence markers named "Clip …" start a clip. A marker with a duration is its own range;
+  // otherwise the clip runs to the next "Clip …" marker, a marker named "End", or the end of the sequence.
+  // -> [{ a, b, label, name }]  (frames)
+  function detectMarkers(seq) {
+    var tb = Number(seq.timebase), fps = TICKS / tb, fr = function (t) { return Math.round(Number(t) / tb); };
+    var ms = (seq.markers || []).map(function (m) { return { n: String(m.n || '').trim(), a: fr(m.s), b: fr(m.e) }; })
+      .sort(function (x, y) { return x.a - y.a; });
+    var seqEnd = Number(seq.end) > 0 ? fr(seq.end) : Math.max.apply(null, [0].concat((seq.items || []).map(function (it) { return fr(it.e); })));
+    var out = [];
+    ms.forEach(function (m, i) {
+      if (!/^clip\b/i.test(m.n)) return;
+      var b = m.b - m.a >= 1 ? m.b : seqEnd;
+      if (m.b - m.a < 1) {
+        for (var j = i + 1; j < ms.length; j++) if (ms[j].a > m.a && (/^clip\b/i.test(ms[j].n) || /^end$/i.test(ms[j].n))) { b = ms[j].a; break; }
+      }
+      if (b - m.a >= Math.max(1, Math.round(fps / 4))) out.push({ a: m.a, b: b, name: m.n, label: out.length + 1 });
+    });
+    return out;
+  }
+
+  var api = { detect: detect, detectMarkers: detectMarkers, TICKS: TICKS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.UAICuts = api;
 })(this);

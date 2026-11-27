@@ -12,126 +12,235 @@
   <span class="mark"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-7 5-5 5 5M4 14v7h16v-7"/></svg></span>
   <div class="ttl">
     <h1>UAI Smart Export</h1>
-    <div class="sub"><span id="project">No project</span><span id="acchip" class="chip" hidden></span></div>
+    <div class="sub"><span id="project">No project</span><span id="acchip" class="chip" hidden></span><span id="ver" class="ver"></span></div>
   </div>
-  <div class="hright"><span id="hmsg" class="hmsg"></span><button id="hundo" class="ghost icon" title="Undo (Cmd+Z)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button><button id="hredo" class="ghost icon" title="Redo (Shift+Cmd+Z)"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button><span id="ver" class="ver"></span><button id="refresh" class="ghost" title="Re-read the timeline"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5m-4 8a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></svg>Refresh</button></div>
+  <div class="hright">
+    <span id="hmsg" class="hmsg"></span>
+    <button id="hundo" class="ghost icon" title="Undo (Cmd+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+    <button id="hredo" class="ghost icon" title="Redo (Shift+Cmd+Z)" aria-label="Redo"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
+    <button id="refresh" class="ghost icon" title="Re-read the timeline" aria-label="Refresh"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5m-4 8a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></svg></button>
+    <button id="gear" class="ghost icon" title="Export settings" aria-label="Export settings"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
+  </div>
 </header>
 
 <div id="update" class="update" hidden>
   <span id="updatetext"></span>
   <button id="updatebtn">Update now</button>
 </div>
+<div id="gamma" class="banner" hidden>
+  <span id="gammatext"></span>
+  <button id="gammafix" title="Saves the project, sets Viewer Gamma 1.96 and reopens it">Set 1.96</button>
+  <button id="gammax" class="ghost icon" title="Hide for this project" aria-label="Hide">×</button>
+</div>
 
 <nav class="tabs" id="tabs">
   <button data-tab="export" class="on"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-7 5-5 5 5M4 14v7h16v-7"/></svg>Export</button>
-  <button data-tab="results"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m8 12 3 3 5-6"/></svg>Results</button>
+  <button data-tab="qc"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m8 12 3 3 5-6"/></svg>QC<span id="qcbadge" class="badge" hidden></span></button>
+  <button data-tab="deliver"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>Deliver</button>
   <button data-tab="about"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>About</button>
 </nav>
 
 <!-- EXPORT -->
 <main class="tab" id="tab-export">
-  <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h7l2 2h9v12H3z"/></svg><span>Export to</span><button id="resetdir" class="link end" title="Go back to the client's Final Output folder">Use Final Output</button></div>
+  <section class="tight">
+    <div class="pair">
+      <label class="pick"><span>Project type</span>
+        <select id="mode">
+          <option value="grade">Color grading export</option>
+          <option value="normal">Normal export</option>
+        </select>
+      </label>
+      <label class="pick"><span>What to export</span>
+        <select id="scope">
+          <option value="all">All sequences</option>
+          <option value="active">Active sequence</option>
+          <option value="selected">Selected clips</option>
+        </select>
+        <select id="nscope" hidden>
+          <option value="seq">Whole sequence</option>
+          <option value="cuts">Clips by cuts</option>
+          <option value="marks">Markers (“Clip …”)</option>
+        </select>
+      </label>
+    </div>
+    <div class="outs">
+      <span class="muted">Outputs</span>
+      <button class="chip accent" id="out-master" title="The export itself (always on)">✓ Master</button>
+      <button class="chip" id="out-social" title="1080 wide · 8 Mbps · fast start · loudness target. Made from the master once it has rendered and passed QC">+ Social</button>
+      <button class="chip" id="out-review" title="720p copy under the MB limit, contact sheet, cover PNG, in a Review folder next to the exports">+ Review pack</button>
+    </div>
+    <button id="outline" class="outline" title="Export settings: size, naming, QC, review pack">
+      <span id="outlinetext" class="ol"></span><span class="muted">Edit ›</span>
+    </button>
     <div class="dir">
       <div id="outdir" class="path" title=""></div>
-      <button id="browse" title="Choose another folder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h7l2 2h9v12H3z"/></svg>Change…</button>
-      <button id="reveal" class="ghost" title="Open the folder in Finder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3h8v8M21 3l-9 9M10 5H4v15h15v-6"/></svg>Open</button>
+      <button id="browse" title="Choose another export folder">Change…</button>
+      <button id="reveal" class="icon" title="Open the folder in Finder" aria-label="Open folder"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3h8v8M21 3l-9 9M10 5H4v15h15v-6"/></svg></button>
     </div>
-  </section>
-
-  <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span>Project type</span><span id="modehint" class="end"></span></div>
-    <div class="seg" id="mode">
-      <button data-v="grade" class="on">Color grading export</button>
-      <button data-v="normal">Normal export</button>
-    </div>
-  </section>
-
-  <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="9" cy="18" r="2" fill="var(--bg)"/></svg><span>Settings</span><span id="setend" class="end">H.264 · 4K in the sequence's orientation</span></div>
-    <div class="seg" id="scope">
-      <button data-v="all" class="on">All sequences</button>
-      <button data-v="active">Active sequence</button>
-      <button data-v="selected">Selected clips</button>
-    </div>
-    <div class="seg" id="nscope" hidden>
-      <button data-v="seq" class="on" title="One file per sequence: the full timeline">Whole sequence</button>
-      <button data-v="cuts" title="Several videos in one sequence: the longest layer marks each one">Clips by cuts</button>
-    </div>
-    <div class="row opts">
-      <label class="gradeonly">Max <input id="capgb" type="number" min="0.2" step="0.1" value="2"> GB</label>
-      <label class="gradeonly">Max <input id="capmbps" type="number" min="5" step="5" value="200"> Mbps</label>
-      <label><input id="replace" type="checkbox"> Replace existing</label>
-      <label><input id="autostart" type="checkbox"> Start queue</label>
-    </div>
+    <button id="resetdir" class="link mini" title="Go back to the default export folder" hidden>Use the default folder</button>
   </section>
 
   <section class="grow">
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span id="count">0 clips</span><button id="selactive" class="link" hidden title="Tick only the active sequence">Active only</button><button id="selall" class="link" hidden>All / none</button><span id="summary" class="end"></span></div>
+    <div class="cap"><span id="count">0 clips</span><button id="selactive" class="link" hidden title="Tick only the active sequence">Active only</button><button id="selall" class="link" hidden>All / none</button><span id="summary" class="end"></span></div>
     <div id="list" class="list"></div>
   </section>
 
   <footer>
     <div class="actions">
-      <button id="go" class="primary" disabled><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-7 5-5 5 5M4 14v7h16v-7"/></svg>Export all</button>
-      <button id="sizecheck" class="second" title="Check every file in the export folder: codec, frame size and size cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>Verify files</button>
+      <button id="go" class="primary" disabled>Export</button>
+      <button id="toqc" class="second" title="Check the exported files now">Check files</button>
     </div>
     <div id="status" class="status"></div>
   </footer>
 </main>
 
-<!-- RESULTS -->
-<div class="tab" id="tab-results" hidden>
+<!-- QC -->
+<div class="tab" id="tab-qc" hidden>
+  <section class="tight">
+    <div class="stats">
+      <div><b id="qpass" class="tone-ok">0</b><span>passed</span></div>
+      <div><b id="qfix">0</b><span>to fix</span></div>
+      <div><b id="qwhen">—</b><span id="qwhenl">not checked</span></div>
+    </div>
+    <div class="legend"><span><i class="dot"></i>Frames</span><span><i class="dot"></i>Loudness</span><span><i class="dot"></i>Duration</span><span><i class="dot"></i>Codec + size</span></div>
+  </section>
   <section class="grow">
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m8 12 3 3 5-6"/></svg><span>Verified output</span><span id="vwhen" class="end"></span></div>
-    <div id="vlist" class="list"><div class="empty">Press Verify files after Media Encoder has finished.</div></div>
-    <div class="summaryline"><span id="vok">0 verified</span><span id="vbad">0 to fix</span></div>
+    <div class="cap"><span>Exported files</span><span class="end">click a file for details</span></div>
+    <div id="qlist" class="list"><div class="empty">Export, then each file is checked here when Media Encoder finishes. Or press Check all.</div></div>
   </section>
   <footer>
     <div class="actions">
-      <button id="verify" class="primary"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>Verify files</button>
-      <button id="vopen" class="second"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h7l2 2h9v12H3z"/></svg>Open folder</button>
+      <button id="qrun" class="primary">Check all</button>
+      <button id="qdeliver" class="second">Deliver ›</button>
     </div>
-    <div id="vstatus" class="status"></div>
+    <div id="qstatus" class="status"></div>
   </footer>
+</div>
+
+<!-- DELIVER -->
+<div class="tab" id="tab-deliver" hidden>
+  <section class="tight">
+    <div class="row"><span id="dpass" class="chip ok">0 passed QC</span><span id="dheld" class="chip bad" hidden></span><span class="muted push">only passed files go out</span></div>
+  </section>
+  <section class="cards tight">
+    <details class="card2" open>
+      <summary><span class="num">1</span><b>Upload to Drive</b><span class="muted" id="driveacct">Google Drive</span></summary>
+      <label class="pick"><span>Drive account (Drive for desktop on this Mac)</span><select id="driveacctsel"></select></label>
+      <div class="dir"><div id="drivedir" class="path"></div><button id="drivebrowse">Change…</button></div>
+      <div class="row"><label><input type="checkbox" id="up-master" checked>Master</label><label><input type="checkbox" id="up-social" checked>Social</label><label><input type="checkbox" id="up-review" checked>Review pack</label><label><input type="checkbox" id="up-report" checked>QC report</label></div>
+      <div class="note" id="drivenote"></div>
+    </details>
+    <details class="card2">
+      <summary><span class="num">2</span><b>Asana QC task</b><span class="muted" id="asanasum">off</span></summary>
+      <label class="tg"><input type="checkbox" id="asana-on">Move the task to QC 1 and comment the Drive link + QC report</label>
+      <div class="kv2"><span>Project</span><input type="text" id="asana-proj" value="Creative Requests"><span>Task</span><input type="text" id="asana-task" placeholder="defaults to the project name"></div>
+      <div class="chain"><span class="chip">Produce</span>›<span class="chip accent">QC 1 · Hitesh</span>›<span class="chip">Khusi</span>›<span class="chip">Johnson</span>›<span class="chip">ANIK</span></div>
+    </details>
+    <details class="card2">
+      <summary><span class="num">3</span><b>Slack note</b><span class="muted" id="slacksum">off</span></summary>
+      <label class="tg"><input type="checkbox" id="slack-on">Draft a note (you approve the text before it is posted)</label>
+      <div class="kv2"><span>Channel</span><input type="text" id="slack-ch" placeholder="#channel (not chosen yet)"></div>
+    </details>
+  </section>
+  <section class="grow">
+    <div class="cap"><span>Files going out</span><span id="dcount" class="end"></span></div>
+    <div id="dlist" class="list"><div class="empty">Run QC first: only files that pass go out.</div></div>
+  </section>
+  <footer>
+    <button id="handoff" class="primary" disabled>Hand off</button>
+    <div id="dstatus" class="status">Shows a summary to confirm before anything is copied or prepared.</div>
+  </footer>
+</div>
+
+<!-- SETTINGS (gear / Output line) -->
+<div class="tab" id="tab-settings" hidden>
+  <div class="sethead"><button id="setback" class="ghost">‹ Back</button><b>Export settings</b><span class="muted">saved on this Mac</span></div>
+  <div class="acc" id="acc">
+    <details data-sec="size" open>
+      <summary><b>Size + bitrate</b><span class="muted" id="sum-size"></span></summary>
+      <label class="pick"><span>Colour-grading rule</span>
+        <select id="rule">
+          <option value="auto">Auto: “AC” in the folder name = AC rule, else Client</option>
+          <option value="ac">AC rule: every file under the cap</option>
+          <option value="client">Client rule: 8K→4K 4.5–4.8 GB, 4K under 2 GB</option>
+        </select>
+      </label>
+      <div class="row tg" id="acvals"><span class="muted">AC cap</span><input id="capgb" type="number" min="0.2" step="0.1" value="2"><span class="muted">GB · max</span><input id="capmbps" type="number" min="5" step="5" value="200"><span class="muted">Mbps</span></div>
+      <div class="note" id="clientvals">Client: 8K source → 4K at 4.5–4.8 GB, max 200 Mbps (a clip under about 3 min stays at 200 Mbps and comes out smaller). 4K source → stays 4K, max 90 Mbps, under 2 GB.</div>
+      <div class="note">Normal export: match source (≤ 4K), medium bitrate VBR 1-pass, no size cap.</div>
+      <label class="tg"><input id="replace" type="checkbox">Replace a file that already exists (else it is skipped)</label>
+      <label class="tg"><input id="autostart" type="checkbox">Start the Media Encoder queue automatically</label>
+    </details>
+    <details data-sec="name">
+      <summary><b>Naming + versions</b><span class="muted" id="sum-name"></span></summary>
+      <label class="pick"><span id="tpllabel">File name template</span><input type="text" id="tpl" spellcheck="false"></label>
+      <div class="tokens" id="tokens"><button class="chip" data-t="{Project}">+ Project</button><button class="chip" data-t="{Sequence}">+ Sequence</button><button class="chip" data-t="{Clip}">+ Clip</button><button class="chip" data-t="{Ratio}">+ Ratio</button><button class="chip" data-t="{Date}">+ Date</button><button class="chip" data-t="_v{NN}">+ vNN</button><button class="chip" id="tplreset" title="Back to this project type's default">Reset</button></div>
+      <div class="note">Preview: <b id="tplprev"></b></div>
+      <label class="tg"><input type="checkbox" id="never">Never overwrite: a taken name gets the next free version</label>
+      <div class="note">One template per project type. Colour grading keeps the clip name (<b>{Clip}</b>). <b>v{NN}</b> = the next free version in the folder.</div>
+    </details>
+    <details data-sec="qc">
+      <summary><b>Auto QC</b><span class="muted" id="sum-qc"></span></summary>
+      <label class="tg"><input type="checkbox" id="autoqc" checked>Check each file when Media Encoder finishes (panel open)</label>
+      <label class="tg"><input type="checkbox" id="chkFrames" checked>Black or frozen frames at start and end</label>
+      <div class="row tg"><label><input type="checkbox" id="chkLoud" checked>Loudness target</label><input type="number" id="lufs" value="-14" step="0.5"><span class="muted">LUFS ± 1</span></div>
+      <div class="note">Loudness is checked on Normal export. Colour-grading masters keep the source level: shown as info.</div>
+      <label class="tg"><input type="checkbox" id="chkDur" checked>Duration matches the timeline</label>
+      <label class="tg"><input type="checkbox" id="chkCodec" checked>Codec, frame size, frame rate, size band</label>
+      <label class="tg"><input type="checkbox" id="notify" checked>Mac notification when QC is done</label>
+    </details>
+    <details data-sec="pack">
+      <summary><b>Review pack</b><span class="muted" id="sum-pack"></span></summary>
+      <div class="row tg"><label><input type="checkbox" id="pack720" checked>Review copy 720p, under</label><input type="number" id="packMB" value="16" min="2" step="1"><span class="muted">MB</span></div>
+      <label class="tg"><input type="checkbox" id="packSheet" checked>Contact sheet: first, middle, last frame</label>
+      <label class="tg"><input type="checkbox" id="packCover" checked>Cover PNG from the marker named “cover” (else frame 1)</label>
+      <div class="note">Turn it on with the <b>Review pack</b> chip on Export. Saved in a “Review” folder next to the exports.</div>
+    </details>
+    <details data-sec="set">
+      <summary><b>Delivery set</b><span class="muted">Master + Social</span></summary>
+      <div class="kv"><div><span>Master</span><b>the export (rules above)</b></div><div><span>Social</span><b>1080 wide · 8 Mbps · fast start · loudness target</b></div><div><span>4:5 / 16:9</span><b>later: needs a reframed sequence</b></div><div><span>Where</span><b>“Social” folder next to the exports</b></div></div>
+    </details>
+    <details data-sec="guard">
+      <summary><b>Preview gamma guard</b><span class="muted" id="sum-guard"></span></summary>
+      <label class="tg"><input type="checkbox" id="guard" checked>Warn when the project's Viewer Gamma is not 1.96 (QuickTime)</label>
+      <div class="note">Read from the saved project file. <b>Set 1.96</b> saves the project, closes it, changes only that setting and reopens it. It changes what you see in Premiere, never the exported file.</div>
+    </details>
+  </div>
+  <footer><button id="setdone" class="primary">Done</button></footer>
 </div>
 
 <!-- ABOUT -->
 <div class="tab" id="tab-about" hidden>
-  <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg><span>New updates</span><span class="end">what changed, before → now</span></div>
+  <details class="fold" open>
+    <summary><b>New updates</b><span class="muted">what changed, before → now</span></summary>
     <div id="updates" class="updates"></div>
-  </section>
-  <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span>Workflow</span></div>
+  </details>
+  <details class="fold">
+    <summary><b>How to use</b></summary>
     <ol class="steps">
-      <li>Finish the cut and grade in UAI Luma Cut.</li>
-      <li>Check the export folder (the client's Final Output by default).</li>
-      <li><b>Export</b>: one Media Encoder job per enabled V1 clip, file named after the clip.</li>
-      <li><b>Verify files</b> when encoding is done: codec, frame size and size cap are read from each file.</li>
+      <li><b>Export</b>: pick the project type and what to export, tick the outputs (Master, Social, Review pack), press Export.</li>
+      <li>Media Encoder renders. With the panel open, each file is checked on <b>QC</b> as soon as it is finished, with a Mac notification when all are done. Social and Review pack are made from the master after it passes.</li>
+      <li><b>QC</b>: click a file for details. A problem? <b>Go to problem</b> jumps to it in the timeline. Re-export only that file; it is checked again.</li>
+      <li><b>Deliver</b>: only passed files go to Drive. Asana and Slack are prepared for Claude; you confirm first.</li>
     </ol>
-    <div class="note"><b>Normal export</b> (Project type): any edit project. <b>Whole sequence</b> = one file per ticked sequence, the full timeline. <b>Clips by cuts</b> = several videos edited in one sequence: the longest layer (background, BGM, an adjustment layer named "Clip 1"…) marks each video, everything inside it belongs to it. Files: <i>Sequence</i>.mp4 or <i>Sequence</i>_Clip01.mp4. Nested sequences start unticked.</div>
-  </section>
-  <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="9" cy="18" r="2" fill="var(--bg)"/></svg><span>Output rules</span></div>
+    <div class="note"><b>Colour grading export</b>: one file per enabled V1 clip, 4K, named after the clip, 1-frame clean edge. <b>Normal export</b>: <b>Whole sequence</b> = one file per ticked sequence; <b>Clips by cuts</b> = the longest layer (background, BGM, an adjustment layer named “Clip 1”) marks each video; <b>Markers</b> = sequence markers named “Clip …” start a video that runs to the next “Clip …” or “End” marker (a marker with a duration is its own range).</div>
+  </details>
+  <details class="fold">
+    <summary><b>Output rules</b></summary>
     <div class="kv">
-      <div><span>Format</span><b>H.264 MP4</b></div>
-      <div><span>Frame</span><b>4K · sequence orientation</b></div>
-      <div><span>Horizontal</span><b>3840 × 2160</b></div>
-      <div><span>Vertical</span><b>2160 × 3840</b></div>
+      <div><span>Format</span><b>H.264 MP4 · AAC 320</b></div>
       <div><span>Source</span><b>Original media, never proxies</b></div>
+      <div><span>AC client</span><b>4K · every file under 2 GB</b></div>
+      <div><span>Client</span><b>8K→4K 4.5–4.8 GB ≤ 200 Mbps · 4K ≤ 90 Mbps, under 2 GB</b></div>
+      <div><span>Normal</span><b>Match source ≤ 4K · medium VBR</b></div>
+      <div><span>Social</span><b>1080 wide · 8 Mbps · −14 LUFS</b></div>
     </div>
-    <div class="kv">
-      <div><span>Normal export</span><b>Match source (≤ 4K)</b></div>
-      <div><span>Bitrate</span><b>Medium · VBR 1-pass</b></div>
-      <div><span>1080 × 1920 @ 30</span><b>≈ 10 Mbps</b></div>
-      <div><span>Size cap · frame rule</span><b>None · exact frames</b></div>
-    </div>
-    <div class="note">Bitrate is set per clip from its length so every file stays under the size cap (2 GB = 2,000,000,000 bytes). Frames are scaled, never stretched. Media Encoder renders from the original files even while Premiere shows proxies, so 8K footage edited on proxies still exports at full quality.</div>
     <div class="row opts"><span id="probestate" class="chip"></span></div>
-  </section>
+  </details>
 </div>
 <script src="cuts.js"></script>
+<script src="naming.js"></script>
+<script src="qc.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

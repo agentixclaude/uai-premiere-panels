@@ -2,6 +2,52 @@
  "panel": "UAI Smart Export",
  "entries": [
   {
+   "version": "1.10.0",
+   "date": "2026-11-27T15:00",
+   "changes": [
+    {
+     "what": "Layout",
+     "before": "Export, Results, About; every setting on the Export tab",
+     "now": "Export, QC, Deliver, About. Project type and What to export are two dropdowns in one row; size, naming, QC and review settings sit behind one Output line and the settings button (one section open at a time). Header, tabs and footer stay put, only the list scrolls"
+    },
+    {
+     "what": "Client rule (colour grading, folder without “AC”)",
+     "before": "same as AC: 4K, every file under 2 GB",
+     "now": "8K source → 4K at 4.5–4.8 GB, max 200 Mbps; 4K source stays 4K, max 90 Mbps, under 2 GB. AC folders keep under 2 GB. Settings › Size + bitrate can force AC or Client"
+    },
+    {
+     "what": "Auto QC",
+     "before": "Verify files by hand: size, codec, frame size",
+     "now": "each queued file is checked as soon as Media Encoder finishes it (panel open): black or still frames at start/end, loudness (−14 ±1 LUFS on Normal export, info on colour grading), duration = timeline, codec/frame/fps/size band. 4 dots per file, details on click, Go to problem in the timeline, Mac notification"
+    },
+    {
+     "what": "Naming + versions",
+     "before": "file name = clip or sequence name",
+     "now": "template with chips {Project} {Sequence} {Clip} {Ratio} {Date} v{NN}; Normal default {Project}_{Sequence}_{Clip}_{Ratio}_v{NN}, next free version, never overwrites. Colour grading keeps {Clip}"
+    },
+    {
+     "what": "Outputs",
+     "before": "the export only",
+     "now": "chips Master + Social (1080 wide, 8 Mbps, fast start, loudness target) + Review pack (720p copy under 16 MB, contact sheet, cover PNG from a “cover” marker); made from the master after it passes QC, in Social/ and Review/ next to the exports"
+    },
+    {
+     "what": "Export by markers",
+     "before": "Whole sequence or Clips by cuts",
+     "now": "3rd option: sequence markers named “Clip …” start a video that runs to the next Clip or End marker (a marker with a duration is its own range)"
+    },
+    {
+     "what": "Preview gamma guard",
+     "before": "—",
+     "now": "banner when the saved project's Viewer Gamma is not 1.96; Set 1.96 saves, closes, changes only that setting and reopens (backup kept)"
+    },
+    {
+     "what": "Deliver",
+     "before": "—",
+     "now": "only QC-passed files: copy to a Google Drive for desktop folder (account picked from this Mac), QC report, and a hand-off prompt for Claude to move the Asana task to QC 1 and draft the Slack note; a summary to confirm first"
+    }
+   ]
+  },
+  {
    "version": "1.9.0",
    "date": "2026-11-27T12:20",
    "changes": [

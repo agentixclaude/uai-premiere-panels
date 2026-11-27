@@ -10,6 +10,18 @@ function ugFindSeq(id) {
     }
     return null;
 }
+function ugMarkersJson(s) {
+    var out = '', first = true;
+    try {
+        var ms = s.markers, m = ms ? ms.getFirstMarker() : null;
+        while (m) {
+            out += (first ? '' : ',') + '{"n":"' + ugEsc(m.name) + '","s":"' + m.start.ticks + '","e":"' + m.end.ticks + '"}';
+            first = false;
+            m = ms.getNextMarker(m);
+        }
+    } catch (e) {}
+    return '[' + out + ']';
+}
 // Project + every sequence + every clip on V1 (name, range, enabled, selected)
 function ugInfo() {
     try {
@@ -33,7 +45,7 @@ function ugInfo() {
                     out += '{"name":"' + ugEsc(k.name) + '","start":' + k.start.seconds + ',"end":' + k.end.seconds + ',"startTicks":"' + k.start.ticks + '","endTicks":"' + k.end.ticks + '","inPoint":' + k.inPoint.seconds + ',"outPoint":' + k.outPoint.seconds + ',"enabled":' + (k.disabled ? 'false' : 'true') + ',"selected":' + (sel ? 'true' : 'false') + '}';
                 }
             }
-            out += ']}';
+            out += '],"markers":' + ugMarkersJson(s) + '}';
         }
         return out + ']}';
     } catch (e) {
@@ -101,7 +113,7 @@ function ugNormalInfo() {
                 }
             }
             if (i > 0) { out += ','; }
-            out += '{"id":"' + ugEsc(s.sequenceID) + '","name":"' + ugEsc(s.name) + '","w":' + s.frameSizeHorizontal + ',"h":' + s.frameSizeVertical + ',"timebase":"' + s.timebase + '","end":"' + s.end + '","nested":[' + nested + '],"items":[' + items + ']}';
+            out += '{"id":"' + ugEsc(s.sequenceID) + '","name":"' + ugEsc(s.name) + '","w":' + s.frameSizeHorizontal + ',"h":' + s.frameSizeVertical + ',"timebase":"' + s.timebase + '","end":"' + s.end + '","nested":[' + nested + '],"items":[' + items + '],"markers":' + ugMarkersJson(s) + '}';
         }
         return out + ']}';
     } catch (e) {
@@ -284,4 +296,39 @@ function uaiHistory(dir) {
         try { after = Number(p.undoStackIndex()); } catch (e2) {}
         return 'OK:' + (before === null || after === null ? '?' : Math.abs(after - before));
     } catch (e) { return 'ERR:' + e.toString(); }
+}
+
+// ---------------- 1.10.0 ----------------
+// QC › Go to problem: open the sequence and park the playhead (seconds on the sequence timeline)
+function ugGotoSeq(seqId, sec) {
+    try {
+        var s = ugFindSeq(seqId);
+        if (!s) { return 'ERR:sequence not found'; }
+        try { app.project.openSequence(seqId); } catch (e1) {}
+        try { app.project.activeSequence = s; } catch (e2) {}
+        var t = new Time(); t.seconds = Math.max(0, Number(sec) || 0);
+        s.setPlayerPosition(t.ticks);
+        return 'OK';
+    } catch (e) { return 'ERR:' + e.toString(); }
+}
+// Preview gamma guard: the setting lives only in the saved project file (ColorManagementSettings.sdrGamma) and has
+// no scripting call, so the fix = save, close, rewrite that one value, reopen (the panel does the rewrite).
+function ugSaveClose() {
+    try {
+        var p = app.project;
+        if (!p || !p.path) { return 'ERR:Open a saved project first.'; }
+        var path = p.path;
+        p.save();
+        p.closeDocument(0, 0);
+        return 'OK:' + path;
+    } catch (e) { return 'ERR:' + e.toString(); }
+}
+function ugOpen(path) {
+    try { return app.openDocument(path, true, true, true) ? 'OK' : 'ERR:Premiere did not open the project'; } catch (e) { return 'ERR:' + e.toString(); }
+}
+function ugProjectPath() {
+    try { return app.project && app.project.path ? app.project.path : ''; } catch (e) { return ''; }
+}
+function ugIsDirty() {
+    try { return app.project && app.project.isDirty && app.project.isDirty() ? '1' : '0'; } catch (e) { return '?'; }
 }

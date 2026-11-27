@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.uai.smartexport" ExtensionBundleVersion="1.9.0" ExtensionBundleName="UAI Smart Export">
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.uai.smartexport" ExtensionBundleVersion="1.10.0" ExtensionBundleName="UAI Smart Export">
   <ExtensionList>
-    <Extension Id="com.uai.smartexport.panel" Version="1.9.0"/>
+    <Extension Id="com.uai.smartexport.panel" Version="1.10.0"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -33,7 +33,7 @@
           <Type>Panel</Type>
           <Menu>UAI Smart Export</Menu>
           <Geometry>
-            <Size><Height>620</Height><Width>420</Width></Size>
+            <Size><Height>700</Height><Width>420</Width></Size>
             <MinSize><Height>320</Height><Width>320</Width></MinSize>
           </Geometry>
           <Icons/>
