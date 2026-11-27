@@ -2,6 +2,32 @@
  "panel": "UAI Smart Export",
  "entries": [
   {
+   "version": "1.9.0",
+   "date": "2026-11-27T12:20",
+   "changes": [
+    {
+     "what": "Project type",
+     "before": "one mode: colour-grading export (one file per enabled V1 clip, 4K, under the size cap, 1-frame clean edge)",
+     "now": "switch at the top of Export: Color grading export (unchanged) or Normal export"
+    },
+    {
+     "what": "Normal export › Whole sequence",
+     "before": "not available",
+     "now": "one file per ticked sequence, the full timeline (Entire Sequence), named after the sequence; nested sequences start unticked"
+    },
+    {
+     "what": "Normal export › Clips by cuts",
+     "before": "not available",
+     "now": "several videos in one sequence are found by their longest layer (background, BGM, or an adjustment layer named \"Clip N\"); every shorter layer inside belongs to that clip; files Sequence_Clip01, 02…; exact frames, no edge offset; full-length logos/watermarks ignored"
+    },
+    {
+     "what": "Normal export settings",
+     "before": "—",
+     "now": "H.264, match source frame and frame rate (scaled only above 4K), medium bitrate VBR 1-pass (about 10 Mbps for 1080×1920 @30, 40 for 4K @30), AAC 320 kbps, no size cap; Verify skips the cap"
+    }
+   ]
+  },
+  {
    "version": "1.8.3",
    "date": "2026-11-26T13:00",
    "changes": [

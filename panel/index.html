@@ -40,22 +40,34 @@
   </section>
 
   <section>
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="9" cy="18" r="2" fill="var(--bg)"/></svg><span>Settings</span><span class="end">H.264 · 4K in the sequence's orientation</span></div>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span>Project type</span><span id="modehint" class="end"></span></div>
+    <div class="seg" id="mode">
+      <button data-v="grade" class="on">Color grading export</button>
+      <button data-v="normal">Normal export</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="9" cy="18" r="2" fill="var(--bg)"/></svg><span>Settings</span><span id="setend" class="end">H.264 · 4K in the sequence's orientation</span></div>
     <div class="seg" id="scope">
       <button data-v="all" class="on">All sequences</button>
       <button data-v="active">Active sequence</button>
       <button data-v="selected">Selected clips</button>
     </div>
+    <div class="seg" id="nscope" hidden>
+      <button data-v="seq" class="on" title="One file per sequence: the full timeline">Whole sequence</button>
+      <button data-v="cuts" title="Several videos in one sequence: the longest layer marks each one">Clips by cuts</button>
+    </div>
     <div class="row opts">
-      <label>Max <input id="capgb" type="number" min="0.2" step="0.1" value="2"> GB</label>
-      <label>Max <input id="capmbps" type="number" min="5" step="5" value="200"> Mbps</label>
+      <label class="gradeonly">Max <input id="capgb" type="number" min="0.2" step="0.1" value="2"> GB</label>
+      <label class="gradeonly">Max <input id="capmbps" type="number" min="5" step="5" value="200"> Mbps</label>
       <label><input id="replace" type="checkbox"> Replace existing</label>
       <label><input id="autostart" type="checkbox"> Start queue</label>
     </div>
   </section>
 
   <section class="grow">
-    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span id="count">0 clips</span><span id="summary" class="end"></span></div>
+    <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 10 5-10 5L2 8zM2 12l10 5 10-5M2 16l10 5 10-5"/></svg><span id="count">0 clips</span><button id="selactive" class="link" hidden title="Tick only the active sequence">Active only</button><button id="selall" class="link" hidden>All / none</button><span id="summary" class="end"></span></div>
     <div id="list" class="list"></div>
   </section>
 
@@ -98,6 +110,7 @@
       <li><b>Export</b>: one Media Encoder job per enabled V1 clip, file named after the clip.</li>
       <li><b>Verify files</b> when encoding is done: codec, frame size and size cap are read from each file.</li>
     </ol>
+    <div class="note"><b>Normal export</b> (Project type): any edit project. <b>Whole sequence</b> = one file per ticked sequence, the full timeline. <b>Clips by cuts</b> = several videos edited in one sequence: the longest layer (background, BGM, an adjustment layer named "Clip 1"…) marks each video, everything inside it belongs to it. Files: <i>Sequence</i>.mp4 or <i>Sequence</i>_Clip01.mp4. Nested sequences start unticked.</div>
   </section>
   <section>
     <div class="cap"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="9" cy="18" r="2" fill="var(--bg)"/></svg><span>Output rules</span></div>
@@ -108,10 +121,17 @@
       <div><span>Vertical</span><b>2160 × 3840</b></div>
       <div><span>Source</span><b>Original media, never proxies</b></div>
     </div>
+    <div class="kv">
+      <div><span>Normal export</span><b>Match source (≤ 4K)</b></div>
+      <div><span>Bitrate</span><b>Medium · VBR 1-pass</b></div>
+      <div><span>1080 × 1920 @ 30</span><b>≈ 10 Mbps</b></div>
+      <div><span>Size cap · frame rule</span><b>None · exact frames</b></div>
+    </div>
     <div class="note">Bitrate is set per clip from its length so every file stays under the size cap (2 GB = 2,000,000,000 bytes). Frames are scaled, never stretched. Media Encoder renders from the original files even while Premiere shows proxies, so 8K footage edited on proxies still exports at full quality.</div>
     <div class="row opts"><span id="probestate" class="chip"></span></div>
   </section>
 </div>
+<script src="cuts.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

@@ -72,6 +72,64 @@ function ugQueue(seqId, inSec, outSec, outPath, presetPath) {
         return 'ERR:' + e.toString();
     }
 }
+// ---------------- Normal export (1.9.0) ----------------
+// Every sequence with every enabled item on every unmuted track (video + audio), in ticks.
+// "nested" = names of sequences used inside this one (so the panel can leave them unticked).
+function ugNormalInfo() {
+    try {
+        var p = app.project;
+        if (!p || !p.path) { return '{"error":"Open a saved project first."}'; }
+        var out = '{"sequences":[';
+        for (var i = 0; i < p.sequences.numSequences; i++) {
+            var s = p.sequences[i], items = '', nested = '', firstI = true, firstN = true;
+            var groups = [[s.videoTracks, 'V'], [s.audioTracks, 'A']];
+            for (var g = 0; g < 2; g++) {
+                var tracks = groups[g][0];
+                for (var ti = 0; ti < tracks.numTracks; ti++) {
+                    var t = tracks[ti], muted = false;
+                    try { muted = t.isMuted(); } catch (e1) {}
+                    if (muted) { continue; }
+                    for (var c = 0; c < t.clips.numItems; c++) {
+                        var k = t.clips[c], off = false, isSeq = false;
+                        try { off = k.disabled; } catch (e2) {}
+                        if (off) { continue; }
+                        try { isSeq = k.projectItem && k.projectItem.isSequence(); } catch (e3) {}
+                        if (isSeq) { nested += (firstN ? '' : ',') + '"' + ugEsc(k.projectItem.name) + '"'; firstN = false; }
+                        items += (firstI ? '' : ',') + '{"n":"' + ugEsc(k.name) + '","t":"' + groups[g][1] + (ti + 1) + '","s":"' + k.start.ticks + '","e":"' + k.end.ticks + '"}';
+                        firstI = false;
+                    }
+                }
+            }
+            if (i > 0) { out += ','; }
+            out += '{"id":"' + ugEsc(s.sequenceID) + '","name":"' + ugEsc(s.name) + '","w":' + s.frameSizeHorizontal + ',"h":' + s.frameSizeVertical + ',"timebase":"' + s.timebase + '","end":"' + s.end + '","nested":[' + nested + '],"items":[' + items + ']}';
+        }
+        return out + ']}';
+    } catch (e) {
+        return '{"error":"' + ugEsc(e.toString()) + '"}';
+    }
+}
+// Normal export job. inF < 0 = the whole sequence (Premiere's Entire Sequence).
+// Otherwise frames [inF, outF) exactly, no edge offset: both points aimed a quarter frame into their frame
+// (Premiere keeps the frame the In falls in and stops before the frame the Out falls in; measured AC#13).
+function ugQueueFrames(seqId, inF, outF, outPath, presetPath) {
+    try {
+        var s = ugFindSeq(seqId);
+        if (!s) { return 'ERR:sequence not found'; }
+        app.encoder.launchEncoder();
+        var job;
+        if (inF < 0) {
+            job = app.encoder.encodeSequence(s, outPath, presetPath, app.encoder.ENCODE_ENTIRE, 0);
+        } else {
+            var f = Number(s.timebase) / 254016000000;
+            s.setInPoint((inF + 0.25) * f);
+            s.setOutPoint((outF + 0.25) * f);
+            job = app.encoder.encodeSequence(s, outPath, presetPath, app.encoder.ENCODE_IN_TO_OUT, 0);
+        }
+        return job ? ('OK:' + job) : 'ERR:Media Encoder did not accept the job';
+    } catch (e) {
+        return 'ERR:' + e.toString();
+    }
+}
 function ugStartQueue() {
     try { app.encoder.startBatch(); return 'OK'; } catch (e) { return 'ERR:' + e.toString(); }
 }

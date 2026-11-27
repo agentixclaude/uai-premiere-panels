@@ -1,1 +1,1 @@
-{"version": "1.8.3", "notes": "Clean edge: every export starts 1 frame after and ends 1 frame before the enabled clip edges (no black frame)"}
+{"version": "1.9.0", "notes": "Project type: Normal export \u2014 whole sequence or clips by cuts, match source, medium bitrate, no size cap"}
